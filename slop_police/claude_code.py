@@ -25,6 +25,11 @@ READ_ONLY_TOOLS = (
 )
 
 
+# No settings file is read, of this machine or of the checkout: one could bring hooks, permission rules,
+# `env` or an `apiKeyHelper` into the review.
+NO_SETTINGS = ("--setting-sources", "")
+
+
 @dataclass(frozen=True)
 class ClaudeCode:
     auth: Auth
@@ -52,8 +57,7 @@ class ClaudeCode:
             "--output-format", "json",
             "--json-schema", json.dumps(schema),
             "--permission-mode", "dontAsk",
-            # User settings are skipped so that no hook of this machine reaches the reviewer.
-            "--setting-sources", "project",
+            *NO_SETTINGS,
             "--strict-mcp-config",
             "--no-session-persistence",
         ]
