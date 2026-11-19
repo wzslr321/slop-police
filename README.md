@@ -68,7 +68,7 @@ Two composite actions run in two jobs. The root action reviews the pull request 
 
 The review reads `.review` as the base commit has it, so a pull request cannot change the lenses that review it. The harness, who pays and the model come from `[harness]` there, so each repository chooses its own. While the base has no `.review`, the `config` input names another folder.
 
-A comment on a line the diff shows becomes an inline comment. Any other goes into the review body under its path and line.
+A comment marks the lines of code it is about. On lines the diff shows it becomes an inline comment; GitHub takes a range only inside one hunk, so a range that runs past its hunk is cut to it. Any other comment goes into the review body under its path and lines.
 
 A maintainer starts a review with the label `slop-police`:
 
