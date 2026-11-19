@@ -75,4 +75,5 @@ def branch_change(checkout: Path, base_ref: str, title: str | None, description:
 
 
 def _git(checkout: Path, *arguments: str) -> str:
-    return subprocess.run(["git", *arguments], cwd=checkout, check=True, capture_output=True, text=True).stdout
+    """Git prints a file name as its bytes, which need not be UTF-8: such a name reaches the prompts with � in it."""
+    return subprocess.run(["git", *arguments], cwd=checkout, check=True, capture_output=True, text=True, errors="replace").stdout
