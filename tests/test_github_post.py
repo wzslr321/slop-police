@@ -1,10 +1,12 @@
 """Which comments GitHub can take on a line of the diff, and the review that carries them."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from slop_police.comments import Comment
 from slop_police.github.diff import right_side
-from slop_police.github.post import PullRequest, ReviewRequest, placed
+from slop_police.github.post import PullRequest, ReviewRequest, placed, right_side_of
 
 DIFF = """\
 diff --git a/shop.py b/shop.py
@@ -41,6 +43,17 @@ index 3333333..0000000
 -y = 2
 """
 
+LATIN_1_DIFF = """\
+diff --git a/menu.txt b/menu.txt
+index 1111111..2222222 100644
+--- a/menu.txt
++++ b/menu.txt
+@@ -1 +1,3 @@
+ soup
++crème brûlée
++tea
+"""
+
 
 class RightSideTest(unittest.TestCase):
     def test_added_and_context_lines_of_every_file_that_stays(self) -> None:
@@ -48,6 +61,14 @@ class RightSideTest(unittest.TestCase):
             right_side(DIFF).lines,
             {"shop.py": frozenset({1, 2, 3, 4, 11, 12, 13}), "new name.py": frozenset({5})},
         )
+
+    def test_a_file_in_latin_1_does_not_stop_the_posting(self) -> None:
+        folder = TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        diff_file = Path(folder.name, "change.diff")
+        diff_file.write_bytes(LATIN_1_DIFF.encode("latin-1"))
+
+        self.assertEqual(right_side_of(diff_file).lines, {"menu.txt": frozenset({1, 2, 3})})
 
 
 class ReviewRequestTest(unittest.TestCase):

@@ -26,6 +26,11 @@ class Placement:
     in_body: tuple[Comment, ...]
 
 
+def right_side_of(diff_file: Path) -> RightSide:
+    """A changed file in another encoding, such as Latin-1, must not stop the posting, which reads only paths and line markers."""
+    return right_side(diff_file.read_text(encoding="utf-8", errors="replace"))
+
+
 def placed(comments: list[Comment], diff: RightSide) -> Placement:
     def inline(comment: Comment) -> bool:
         return comment.path is not None and comment.line is not None and diff.shows(comment.path, comment.line)
@@ -107,7 +112,7 @@ def main() -> None:
     if not comments:
         print("The review has no comments, so nothing is posted.")
         return
-    placement = placed(comments, right_side(arguments.diff.read_text()))
+    placement = placed(comments, right_side_of(arguments.diff))
     print(f"On lines of the diff: {len(placement.inline)}. In the review body: {len(placement.in_body)}.")
     request = ReviewRequest(PullRequest(arguments.repository, arguments.pull_request), arguments.commit, placement)
     if arguments.dry_run:
