@@ -23,7 +23,7 @@ jobs:
         uses: ./
         with:
           base: ${{ github.event.pull_request.base.sha }}
-          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          codex-api-key: ${{ secrets.CODEX_API_KEY }}
 
   post:
     name: Post the review
