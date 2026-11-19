@@ -1,0 +1,17 @@
+[project]
+name = "slop-police"
+version = "0.1.0"
+description = "Reviews a branch before its pull request, with the lenses and rules of the repository under review."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+slop-police = "slop_police.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["slop_police"]
