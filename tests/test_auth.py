@@ -1,10 +1,11 @@
 """Only the variables of the chosen `auth` reach the CLI, and a sign-in through which someone else pays stops the review."""
 
+import subprocess
 import unittest
 from unittest.mock import patch
 
 from slop_police import claude_code, codex
-from slop_police.claude_code import ClaudeCode, SignIn
+from slop_police.claude_code import ClaudeCode
 from slop_police.codex import Codex
 from slop_police.harness import Auth
 from slop_police.harnesses import HarnessChoice, HarnessName
@@ -40,20 +41,26 @@ class EnvironmentTest(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", on_api)
 
 
+# `claude --setting-sources "" auth status` of Claude Code 2.1.319, without the fields the check does not read.
+TOKEN_STATUS = '{"loggedIn": true, "authMethod": "oauth_token", "apiProvider": "firstParty"}'
+API_KEY_STATUS = '{"loggedIn": true, "authMethod": "api_key", "apiProvider": "firstParty", "apiKeySource": "ANTHROPIC_API_KEY"}'
+
+
 class SignInTest(unittest.TestCase):
-    def login_problem(self, auth: Auth, sign_in: SignIn) -> str | None:
-        with patch.dict("os.environ", WITH_KEYS, clear=True), patch.object(claude_code, "_sign_in", return_value=sign_in):
+    def login_problem(self, auth: Auth, environment: dict[str, str], status: str) -> str | None:
+        reported = subprocess.CompletedProcess(["claude"], 0, stdout=status, stderr="")
+        with patch.dict("os.environ", environment, clear=True), patch.object(claude_code.subprocess, "run", return_value=reported):
             return ClaudeCode(auth).login_problem()
 
     def test_the_sign_in_that_auth_names_starts_the_review(self) -> None:
-        self.assertIsNone(self.login_problem(Auth.PLAN, SignIn("claude.ai", "firstParty")))
-        self.assertIsNone(self.login_problem(Auth.API, SignIn("api_key", "firstParty", "ANTHROPIC_API_KEY")))
+        self.assertIsNone(self.login_problem(Auth.PLAN, {"CLAUDE_CODE_OAUTH_TOKEN": "a-plan-token"}, TOKEN_STATUS))
+        self.assertIsNone(self.login_problem(Auth.API, {"ANTHROPIC_API_KEY": "a-key"}, API_KEY_STATUS))
 
-    def test_a_sign_in_through_which_someone_else_pays_is_named(self) -> None:
+    def test_a_token_that_is_not_the_plan_token_is_named(self) -> None:
         self.assertEqual(
-            self.login_problem(Auth.PLAN, SignIn("api_key", "firstParty", "/login managed key")),
-            'auth = "plan", but `claude auth status` reports authMethod "api_key", apiProvider "firstParty", '
-            'apiKeySource "/login managed key": someone else would pay.',
+            self.login_problem(Auth.PLAN, {}, TOKEN_STATUS),
+            'auth = "plan", but `claude auth status` reports authMethod "oauth_token", apiProvider "firstParty": '
+            "someone else would pay.",
         )
 
     def test_a_missing_key_is_named(self) -> None:
