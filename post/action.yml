@@ -1,0 +1,37 @@
+name: slop-police post
+description: Posts the comments of a slop-police review on the pull request, as one review that only comments.
+
+inputs:
+  artifact:
+    description: The name the review action uploaded the review under.
+    default: slop-police-review
+  pull-request:
+    description: The number of the pull request.
+    default: ${{ github.event.pull_request.number }}
+  github-token:
+    description: A token that may write to the pull request.
+    default: ${{ github.token }}
+  dry-run:
+    description: true prints the request instead of sending it.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Download the review
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ runner.temp }}/slop-police-review
+
+    - name: Post the review
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}/..
+        GH_TOKEN: ${{ inputs.github-token }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
+        DRY_RUN: ${{ inputs.dry-run == 'true' && '--dry-run' || '' }}
+        REVIEW: ${{ runner.temp }}/slop-police-review
+      run: |
+        python3 -m slop_police.github.post "$REVIEW/review.json" --diff "$REVIEW/change.diff" \
+          --commit "$(cat "$REVIEW/commit")" --repository "$GITHUB_REPOSITORY" --pull-request "$PULL_REQUEST" $DRY_RUN

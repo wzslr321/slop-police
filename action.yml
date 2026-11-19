@@ -1,0 +1,121 @@
+name: slop-police review
+description: Reviews a pull request with the lenses of its base commit and uploads the comments as an artifact for the post action.
+
+inputs:
+  base:
+    description: The commit the pull request merges into, such as github.event.pull_request.base.sha.
+    required: true
+  repo:
+    description: The checkout to review, at the pull request's head commit and with the base in its history.
+    default: .
+  config:
+    description: A review folder to use instead of .review on the base commit, while the base has none.
+    default: ''
+  harness:
+    description: claude or codex, instead of the configured one.
+    default: ''
+  auth:
+    description: plan or api, instead of the configured one.
+    default: ''
+  model:
+    description: Instead of the configured model.
+    default: ''
+  parallel:
+    description: Lenses that run at the same time.
+    default: '3'
+  claude-code-oauth-token:
+    description: For claude with auth = "plan", from `claude setup-token`.
+    default: ''
+  anthropic-api-key:
+    description: For claude with auth = "api".
+    default: ''
+  codex-api-key:
+    description: For codex with auth = "api".
+    default: ''
+  claude-code-version:
+    description: The Claude Code release to install.
+    default: 2.1.319
+  codex-version:
+    description: The version of the npm package @openai/codex to install.
+    default: 0.170.0
+  artifact:
+    description: The name of the artifact that carries the review to the post action.
+    default: slop-police-review
+
+runs:
+  using: composite
+  steps:
+    - name: Read the review configuration
+      id: prepare
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        REPO: ${{ inputs.repo }}
+        BASE: ${{ inputs.base }}
+        CONFIG: ${{ inputs.config }}
+        HARNESS: ${{ inputs.harness }}
+        AUTH: ${{ inputs.auth }}
+      run: |
+        python3 -m slop_police.github.prepare --repo "$REPO" --base "$BASE" --into "$RUNNER_TEMP/slop-police/config" \
+          ${CONFIG:+--config "$CONFIG"} ${HARNESS:+--harness "$HARNESS"} ${AUTH:+--auth "$AUTH"} >> "$GITHUB_OUTPUT"
+
+    - name: Install Claude Code
+      if: steps.prepare.outputs.harness == 'claude'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.claude-code-version }}
+      run: |
+        curl -fsSL https://claude.ai/install.sh | bash -s "$VERSION"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Install Codex
+      if: steps.prepare.outputs.harness == 'codex'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.codex-version }}
+      run: npm install --global "@openai/codex@$VERSION"
+
+    - name: Review
+      shell: bash
+      working-directory: ${{ inputs.repo }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        DISABLE_AUTOUPDATER: '1'
+        BASE: ${{ inputs.base }}
+        CONFIG: ${{ steps.prepare.outputs.config }}
+        HARNESS: ${{ steps.prepare.outputs.harness }}
+        AUTH: ${{ steps.prepare.outputs.auth }}
+        MODEL: ${{ inputs.model }}
+        PARALLEL: ${{ inputs.parallel }}
+        PULL_REQUEST: ${{ github.event.pull_request.number }}
+        TITLE: ${{ github.event.pull_request.title }}
+        DESCRIPTION: ${{ github.event.pull_request.body }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude-code-oauth-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        CODEX_API_KEY: ${{ inputs.codex-api-key }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/slop-police/review"
+        printf '%s' "$DESCRIPTION" > "$RUNNER_TEMP/slop-police/description.md"
+        python3 -m slop_police --base "$BASE" --config "$CONFIG" --harness "$HARNESS" --auth "$AUTH" \
+          --parallel "$PARALLEL" ${MODEL:+--model "$MODEL"} \
+          ${PULL_REQUEST:+--pull-request "$PULL_REQUEST"} ${TITLE:+--title "$TITLE"} \
+          --description-file "$RUNNER_TEMP/slop-police/description.md" \
+          --json "$RUNNER_TEMP/slop-police/review/review.json"
+
+    - name: Keep the reviewed commit and its diff for the post action
+      shell: bash
+      working-directory: ${{ inputs.repo }}
+      env:
+        BASE: ${{ inputs.base }}
+      run: |
+        git rev-parse HEAD > "$RUNNER_TEMP/slop-police/review/commit"
+        git -c core.quotepath=false diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ \
+          "$BASE...HEAD" > "$RUNNER_TEMP/slop-police/review/change.diff"
+
+    - name: Upload the review
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ runner.temp }}/slop-police/review
+        if-no-files-found: error
+        overwrite: true
