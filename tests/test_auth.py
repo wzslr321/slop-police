@@ -7,6 +7,7 @@ from slop_police import claude_code, codex
 from slop_police.claude_code import ClaudeCode
 from slop_police.codex import Codex
 from slop_police.harness import Auth, environment_for
+from slop_police.harnesses import HarnessChoice, HarnessName
 
 WITH_KEYS = {
     "PATH": "/usr/bin",
@@ -43,6 +44,22 @@ class ApiTest(unittest.TestCase):
         with patch.dict("os.environ", {"PATH": "/usr/bin"}, clear=True):
             self.assertIn("ANTHROPIC_API_KEY", ClaudeCode(Auth.API).login_problem())
             self.assertIn("CODEX_API_KEY", Codex(Auth.API).login_problem())
+
+
+class CommandLineChoiceTest(unittest.TestCase):
+    configured = HarnessChoice(HarnessName.CLAUDE, Auth.PLAN, "claude-sonnet-5-5")
+
+    def test_another_harness_drops_the_configured_model(self) -> None:
+        self.assertEqual(
+            self.configured.overridden(HarnessName.CODEX, None, None),
+            HarnessChoice(HarnessName.CODEX, Auth.PLAN, None),
+        )
+
+    def test_the_same_harness_keeps_what_was_not_named(self) -> None:
+        self.assertEqual(
+            self.configured.overridden(None, Auth.API, None),
+            HarnessChoice(HarnessName.CLAUDE, Auth.API, "claude-sonnet-5-5"),
+        )
 
 
 if __name__ == "__main__":

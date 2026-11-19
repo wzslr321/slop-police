@@ -32,6 +32,8 @@ The sessions run in Claude Code or in Codex. `auth` says who pays, and slop-poli
 
 Both CLIs take an API key they find in the environment over the subscription, without asking. So with `plan` slop-police starts them without the key variables, and with `api` it refuses to start when the key is missing.
 
+`--harness`, `--auth` and `--model` on the command line replace what the configuration names, for one run.
+
 Claude Code reports what the tokens would cost through the API, also on a subscription. Codex reports tokens only.
 
 ## What a repository provides

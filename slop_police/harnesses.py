@@ -21,6 +21,15 @@ class HarnessChoice:
     # None leaves the model to the CLI's own default.
     model: str | None = None
 
+    def overridden(self, name: HarnessName | None, auth: Auth | None, model: str | None) -> "HarnessChoice":
+        """This choice with what the command line names instead. Another harness drops the model of the first one."""
+        other_harness = name is not None and name is not self.name
+        return HarnessChoice(
+            name=name or self.name,
+            auth=auth or self.auth,
+            model=model or (None if other_harness else self.model),
+        )
+
 
 def harness_for(choice: HarnessChoice, read_also: tuple[Path, ...]) -> Harness:
     implementation = {HarnessName.CLAUDE: ClaudeCode, HarnessName.CODEX: Codex}[choice.name]
