@@ -1,12 +1,15 @@
 import argparse
+import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 
-from slop_police.change import branch_change
+from slop_police.change import Change, branch_change
 from slop_police.config import Config, load_config
-from slop_police.harness import Auth
+from slop_police.harness import Auth, HarnessFailed
 from slop_police.harnesses import HarnessName
 from slop_police.process import review
+from slop_police.redaction import Redaction
 from slop_police.report import as_json, as_markdown
 
 
@@ -25,6 +28,11 @@ def _arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _change(arguments: argparse.Namespace, checkout: Path) -> Change:
+    description = arguments.description_file.read_text() if arguments.description_file else None
+    return branch_change(checkout, arguments.base, arguments.title, description)
+
+
 def _config(arguments: argparse.Namespace, checkout: Path) -> Config:
     config = load_config((arguments.config or checkout / ".review").resolve())
     harness = config.harness.overridden(
@@ -38,9 +46,12 @@ def _config(arguments: argparse.Namespace, checkout: Path) -> Config:
 def main() -> None:
     arguments = _arguments()
     checkout = arguments.repo.resolve()
-    description = arguments.description_file.read_text() if arguments.description_file else None
-    change = branch_change(checkout, arguments.base, arguments.title, description)
-    result = review(change, _config(arguments, checkout), arguments.parallel)
+    redaction = Redaction.of(os.environ)
+    try:
+        result = review(_change(arguments, checkout), _config(arguments, checkout), arguments.parallel)
+    except HarnessFailed as failure:
+        sys.exit(f"slop-police: {redaction.text(str(failure))}")
+    result = redaction.review(result)
     if arguments.json:
         arguments.json.write_text(as_json(result))
     print(as_markdown(result))
