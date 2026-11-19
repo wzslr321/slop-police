@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -31,13 +32,22 @@ class ChangedFile:
 
 
 def changed_files(change: Change, ignore: tuple[str, ...]) -> list[ChangedFile]:
-    numstat = _git(change.checkout, "diff", "--numstat", change.base, "HEAD")
-    files = [_changed_file(line) for line in numstat.splitlines()]
+    numstat = _git(change.checkout, "diff", "--numstat", "-z", change.base, "HEAD")
+    files = _numstat_files(numstat)
     return [file for file in files if not any(fnmatchcase(file.path, pattern) for pattern in ignore)]
 
 
-def _changed_file(numstat_line: str) -> ChangedFile:
-    added, deleted, path = numstat_line.split("\t")
+def _numstat_files(numstat: str) -> Iterator[ChangedFile]:
+    """Reads `git diff --numstat -z`: every field ends with a NUL, and a rename gives an empty path, then its old and new path."""
+    fields = iter(numstat.split("\0")[:-1])
+    for counts in fields:
+        added, deleted, path = counts.split("\t", 2)
+        if not path:
+            _old_path, path = next(fields), next(fields)
+        yield _changed_file(added, deleted, path)
+
+
+def _changed_file(added: str, deleted: str, path: str) -> ChangedFile:
     binary = added == "-"
     return ChangedFile(
         path=path,

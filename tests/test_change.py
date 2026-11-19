@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from slop_police.change import UncommittedChanges, branch_change
+from slop_police.change import Change, ChangedFile, UncommittedChanges, branch_change, changed_files
 
 
 class ChangeTest(unittest.TestCase):
@@ -12,7 +12,7 @@ class ChangeTest(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.checkout = Path(folder.name)
         self.git("init", "-q", "-b", "main")
-        self.commit({"cart/shop.py": "total = 0\n"})
+        self.base = self.commit({"cart/shop.py": "total = 0\n"})
 
     def git(self, *arguments: str) -> str:
         identity = ["-c", "user.name=test", "-c", "user.email=test@example.com"]
@@ -40,6 +40,18 @@ class ChangeTest(unittest.TestCase):
         (self.checkout / "notes.txt").write_text("not part of the change\n")
 
         self.assertEqual(branch_change(self.checkout, "main", None, None).title, "main")
+
+    def test_changed_files_have_the_paths_of_the_head_commit(self) -> None:
+        self.git("mv", "cart/shop.py", "cart/store.py")
+        (self.checkout / "logo.png").write_bytes(b"\x89PNG\0")
+        self.commit({"café.py": "menu = []\n"})
+
+        files = changed_files(Change(self.checkout, self.base, "a change", "Rename", ""), ignore=())
+
+        self.assertEqual(
+            files,
+            [ChangedFile("café.py", 1, 0), ChangedFile("cart/store.py", 0, 0), ChangedFile("logo.png", 0, 0)],
+        )
 
 
 if __name__ == "__main__":
