@@ -127,29 +127,20 @@ def _through_lens(harness: Harness, change: Change, config: Config, context: str
 def _check_one_verdict_each(lens: str, candidates: list[Candidate], verdicts: list[dict]) -> None:
     """Without this, a skipped candidate would pass as no finding, and a repeated one would become two comments."""
     counted = Counter(verdict["candidate"] for verdict in verdicts)
-    indexes = range(len(candidates))
-    missing = [index for index in indexes if counted[index] == 0]
-    repeated = [index for index in indexes if counted[index] > 1]
-    unknown = sorted(index for index in counted if index not in indexes)
-    if missing or repeated or unknown:
-        raise VerdictsDoNotMatch(_mismatch(lens, missing, repeated, unknown))
+    numbers = range(len(candidates))
+    problems = []
+    if missing := [number for number in numbers if counted[number] == 0]:
+        problems.append(f"no verdict for {_listed(missing)}")
+    if repeated := [number for number in numbers if counted[number] > 1]:
+        problems.append(f"more than one verdict for {_listed(repeated)}")
+    if unknown := sorted(number for number in counted if number not in numbers):
+        problems.append(f"verdicts for candidates that do not exist: {_listed(unknown)}")
+    if problems:
+        raise VerdictsDoNotMatch(f"The check of lens `{lens}` gave {'; '.join(problems)}.")
 
 
-def _mismatch(lens: str, missing: list[int], repeated: list[int], unknown: list[int]) -> str:
-    problems = [
-        f"{problem} {_listed(indexes)}"
-        for problem, indexes in [
-            ("no verdict for", missing),
-            ("more than one verdict for", repeated),
-            ("verdicts for candidates that do not exist:", unknown),
-        ]
-        if indexes
-    ]
-    return f"The check of lens `{lens}` gave {'; '.join(problems)}."
-
-
-def _listed(indexes: list[int]) -> str:
-    return ", ".join(f"#{index}" for index in indexes)
+def _listed(numbers: list[int]) -> str:
+    return ", ".join(f"#{number}" for number in numbers)
 
 
 def _sort_verdicts(candidates: list[Candidate], verdicts: list[dict]) -> tuple[list[Comment], list[Dropped]]:
