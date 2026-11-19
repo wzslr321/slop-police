@@ -30,7 +30,7 @@ The sessions run in Claude Code or in Codex. `auth` says who pays, and slop-poli
 | `claude` | The subscription `claude` is signed in to, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. | `ANTHROPIC_API_KEY` |
 | `codex` | The ChatGPT login of `codex`. | `CODEX_API_KEY` |
 
-Both CLIs take an API key they find in the environment over the subscription, without asking, and Claude Code takes `ANTHROPIC_AUTH_TOKEN` or a `CLAUDE_CODE_USE_*` switch to another cloud over both. So slop-police passes the CLI only the variable of the chosen `auth` and refuses to start when an `api` key is missing. Before the first session it asks `claude auth status` how Claude Code would sign in, and stops when someone else would pay.
+Both CLIs take an API key they find in the environment over the subscription, without asking, and Claude Code takes more variables over both, such as `ANTHROPIC_AUTH_TOKEN` or `CLAUDE_CODE_USE_BEDROCK`. So slop-police passes the CLI only the variable of the chosen `auth` and refuses to start when an `api` key is missing. Before the first session it asks `claude auth status` how Claude Code would sign in, and stops when someone else would pay.
 
 `--harness`, `--auth` and `--model` on the command line replace what the configuration names, for one run.
 
@@ -109,12 +109,14 @@ jobs:
         uses: wzslr321/slop-police/post@v1
 ```
 
+The example passes `codex-api-key` because the `[harness]` it expects in `.review/config.toml` names `codex` with `auth = "api"`. Pass the input that matches yours.
+
 The review action also takes `harness`, `auth`, `model` and `parallel` in place of the configuration, `claude-code-oauth-token`, `anthropic-api-key` and `codex-api-key` for the credential the configuration needs, and `claude-code-version` and `codex-version`. It installs only the CLI that will run. Codex on a ChatGPT plan is not supported in Actions: its login would have to be written back to the secret store after every job. `post` takes `dry-run: true` to print the request instead of sending it.
 
 ### What to trust
 
-- The reviewer reads the pull request's code and never builds or runs it. Codex runs its commands in its read-only sandbox, which on `ubuntu-latest` can read the whole disk but cannot write or reach the network. Claude Code has no sandbox: it gets `Read`, `Grep`, `Glob` and Bash for `git diff`, `git log` and `git show`. Those Bash rules match the start of a command, so `git diff --output=<file>` can still write a file.
-- No code from the checkout runs in the review job. The engine starts with `python3 -P`, so a `slop_police` package or a `json.py` in the checkout is only a file to read. Claude Code reads no settings file, neither the branch's nor the runner's, so their hooks, permission rules, `env` and `apiKeyHelper` do not apply, and it does not load the checkout's `CLAUDE.md` either. Codex ignores the `.codex` config, hooks and rules of a project it does not trust, and a fresh runner trusts none.
+- The reviewer reads the pull request's code and never builds it. Codex runs its commands in its read-only sandbox, which on `ubuntu-latest` can read the whole disk but cannot write or reach the network. Claude Code has no sandbox: it gets `Read`, `Grep`, `Glob` and Bash for `git diff`, `git log` and `git show`. Those Bash rules match the start of a command, so `git log --output=.git/config` can rewrite the checkout's git configuration, and a `git diff` after it runs any command that configuration names. A pull request that talks Claude Code into those two commands runs code in the job that holds the key. Codex refuses the write.
+- The engine itself runs no code from the checkout. It starts with `python3 -P`, so a `slop_police` package or a `json.py` in the checkout is only a file to read. Claude Code reads no settings file, neither the branch's nor the runner's, so their hooks, permission rules, `env` and `apiKeyHelper` do not apply, and it does not load the checkout's `CLAUDE.md` either. Codex ignores the `.codex` config, hooks and rules of a project it does not trust, and a fresh runner trusts none.
 - On `pull_request` the workflow file comes from the pull request's branch. Whoever can push a branch to the repository can change what runs with the secrets, so the points above guard against the code under review, not against that person.
 - Pull requests from forks get no secrets on `pull_request`, so their review stops at the missing key. That is by design.
 - The label is the gate: nothing runs and nothing is spent until a maintainer adds it.
