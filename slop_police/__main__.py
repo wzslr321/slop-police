@@ -4,7 +4,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from slop_police.change import Change, branch_change
+from slop_police.change import Change, UncommittedChanges, branch_change
 from slop_police.config import Config, load_config
 from slop_police.harness import Auth, HarnessFailed
 from slop_police.harnesses import HarnessName
@@ -53,7 +53,7 @@ def main() -> None:
     redaction = Redaction.of(os.environ)
     try:
         result = review(_change(arguments, checkout), _config(arguments, checkout), arguments.parallel)
-    except HarnessFailed as failure:
+    except (UncommittedChanges, HarnessFailed) as failure:
         sys.exit(f"slop-police: {redaction.text(str(failure))}")
     result = redaction.review(result)
     if arguments.json:

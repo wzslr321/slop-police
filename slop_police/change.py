@@ -1,5 +1,4 @@
 import subprocess
-import sys
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -18,6 +17,10 @@ class Change:
     checkout_note: str = ""
     # Where to read first, from a tool outside the reviewer.
     hints: str = ""
+
+
+class UncommittedChanges(Exception):
+    """Tracked files differ from the head commit, so the code the reviewer reads is not the change under review."""
 
 
 @dataclass(frozen=True)
@@ -45,8 +48,11 @@ def _changed_file(numstat_line: str) -> ChangedFile:
 
 def branch_change(checkout: Path, base_ref: str, title: str | None, description: str | None) -> Change:
     """The current branch of `checkout` against where it left `base_ref`, for a change that has no pull request yet."""
-    if _git(checkout, "status", "--porcelain"):
-        print("Uncommitted changes are not reviewed: the reviewer reads the head commit.", file=sys.stderr)
+    if _git(checkout, "status", "--porcelain", "--untracked-files=no"):
+        raise UncommittedChanges(
+            f"Tracked files in {checkout} differ from HEAD. Commit or stash them first: "
+            "the reviewer reads the files as they are, and the change it reviews ends at HEAD."
+        )
     base = _git(checkout, "merge-base", base_ref, "HEAD").strip()
     branch = _git(checkout, "rev-parse", "--abbrev-ref", "HEAD").strip()
     return Change(
