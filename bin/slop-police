@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: bin/slop-police [--base <ref>] [--repo <dir>] [--config <dir>] [--json <file>]
+# Runs slop-police from this clone; `bin/slop-police --help` lists the options.
 set -eu
 export PYTHONPATH="$(cd "$(dirname "$0")/.." && pwd)${PYTHONPATH:+:$PYTHONPATH}"
 exec python3 -m slop_police "$@"
