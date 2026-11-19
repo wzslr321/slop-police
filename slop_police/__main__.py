@@ -47,12 +47,20 @@ def _config(arguments: argparse.Namespace, checkout: Path) -> Config:
     return replace(config, harness=harness)
 
 
+def _warn_of_missing(read_also: tuple[Path, ...]) -> None:
+    for folder in read_also:
+        if not folder.exists():
+            print(f"The read_also folder {folder} does not exist: the reviewer will find nothing there.", file=sys.stderr)
+
+
 def main() -> None:
     arguments = _arguments()
     checkout = arguments.repo.resolve()
+    config = _config(arguments, checkout)
+    _warn_of_missing(config.read_also)
     redaction = Redaction.of(os.environ)
     try:
-        result = review(_change(arguments, checkout), _config(arguments, checkout), arguments.parallel)
+        result = review(_change(arguments, checkout), config, arguments.parallel)
     except (UncommittedChanges, HarnessFailed) as failure:
         sys.exit(f"slop-police: {redaction.text(str(failure))}")
     result = redaction.review(result)
