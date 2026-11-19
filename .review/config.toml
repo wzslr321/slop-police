@@ -9,6 +9,6 @@ lenses = ["readability", "noise"]
 priority = "Code that is hard to read comes before comments, docs and tests that add nothing. Within a kind, the review process and the harnesses come before the GitHub Action, the tests and the README."
 
 [harness]
-name = "claude"
-auth = "plan"
-model = "claude-sonnet-5-5"
+name = "codex"
+auth = "api"
+model = "gpt-6.2-sol"
