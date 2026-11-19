@@ -2,7 +2,7 @@ import json
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from slop_police.change import Change, changed_files
@@ -23,12 +23,13 @@ CANDIDATES_SCHEMA = {
                 "properties": {
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
+                    "end_line": {"type": "integer"},
                     "symbol": {"type": "string"},
                     "problem": {"type": "string"},
                     "evidence": {"type": "string"},
                     "fix": {"type": "string"},
                 },
-                "required": ["path", "line", "symbol", "problem", "evidence", "fix"],
+                "required": ["path", "line", "end_line", "symbol", "problem", "evidence", "fix"],
             },
         }
     },
@@ -64,6 +65,7 @@ class VerdictsDoNotMatch(HarnessFailed):
 class Candidate:
     path: str
     line: int
+    end_line: int
     symbol: str
     problem: str
     evidence: str
@@ -149,9 +151,10 @@ def _sort_verdicts(candidates: list[Candidate], verdicts: list[dict]) -> tuple[l
     for verdict in verdicts:
         candidate = candidates[verdict["candidate"]]
         if verdict["keep"]:
-            comments.append(Comment(candidate.path, candidate.line, verdict["comment"]))
+            comments.append(Comment(candidate.path, candidate.line, verdict["comment"], candidate.end_line))
         else:
-            dropped.append(Dropped(Comment(candidate.path, candidate.line, candidate.problem), verdict["reason"]))
+            dropped_comment = Comment(candidate.path, candidate.line, candidate.problem, candidate.end_line)
+            dropped.append(Dropped(dropped_comment, verdict["reason"]))
     return comments, dropped
 
 
@@ -165,7 +168,20 @@ def _combined(per_lens: list[Checked]) -> Checked:
 
 def _edited(harness: Harness, change: Change, config: Config, checked: Checked) -> Checked:
     answer = harness.ask(_editor_prompt(change, config, checked.comments), COMMENTS_SCHEMA, change.checkout, read_code=False)
-    return Checked(comments_from(answer.output), checked.dropped, checked.usage + answer.usage)
+    edited = _with_ranges(comments_from(answer.output), checked.comments)
+    return Checked(edited, checked.dropped, checked.usage + answer.usage)
+
+
+def _with_ranges(edited: list[Comment], before: list[Comment]) -> list[Comment]:
+    """The editor sees no code, so it gives one line, and the range comes from the comment it was given at that line.
+
+    When two lenses found the same line, the merged comment gets the wider range. With no match it keeps one line.
+    """
+    last_lines: dict[tuple[str | None, int | None], int] = {}
+    for comment in before:
+        place = (comment.path, comment.line)
+        last_lines[place] = max(comment.end_line, last_lines.get(place, comment.end_line))
+    return [replace(comment, end_line=last_lines.get((comment.path, comment.line), comment.line)) for comment in edited]
 
 
 def _context(change: Change, config: Config) -> str:

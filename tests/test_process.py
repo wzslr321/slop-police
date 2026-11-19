@@ -27,7 +27,7 @@ max_comments = 2
 
 @dataclass
 class ScriptedHarness:
-    """Answers each lens with one candidate to keep and one to drop, and the editor with what it was given."""
+    """Answers each lens with one candidate to keep and one to drop, and the editor with one comment moved a line down."""
 
     prompts: list[str] = field(default_factory=list)
 
@@ -50,7 +50,7 @@ class ScriptedHarness:
                 },
                 Usage(10, 1, 0.5),
             )
-        merged = [{"path": "shop.py", "line": 1, "body": "naming: fix it"}, {"path": "shop.py", "line": 1, "body": "tests: fix it"}]
+        merged = [{"path": "shop.py", "line": 1, "body": "naming: fix it"}, {"path": "shop.py", "line": 2, "body": "tests: fix it"}]
         return Answer({"comments": [*merged, {"path": None, "line": None, "body": "a third one"}]}, Usage(5, 1, None))
 
 
@@ -68,7 +68,7 @@ class MiscountingHarness(ScriptedHarness):
 
 
 def _candidate(problem: str) -> dict:
-    return {"path": "shop.py", "line": 1, "symbol": "total", "problem": problem, "evidence": "x", "fix": "y"}
+    return {"path": "shop.py", "line": 1, "end_line": 3, "symbol": "total", "problem": problem, "evidence": "x", "fix": "y"}
 
 
 class ProcessTest(unittest.TestCase):
@@ -88,8 +88,8 @@ class ProcessTest(unittest.TestCase):
 
         self.assertEqual(
             review.comments,
-            [Comment("shop.py", 1, "naming: fix it"), Comment("shop.py", 1, "tests: fix it")],
-            "the editor's third comment is cut by max_comments",
+            [Comment("shop.py", 1, "naming: fix it", end_line=3), Comment("shop.py", 2, "tests: fix it", end_line=2)],
+            "the editor's comment at the lens's line takes its range, the moved one keeps one line, max_comments cuts the third",
         )
         self.assertEqual([dropped.reason for dropped in review.dropped], ["the code does not show it"] * 2)
 

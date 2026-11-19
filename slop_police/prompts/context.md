@@ -15,4 +15,4 @@ Read a file's change with `git diff {base} HEAD -- <path>`, and open the whole f
 
 You look for one kind of problem only, described below. Other passes cover correctness, tests and the other kinds, so leave those out. The maintainer holds these rules strictly and rejects code that passes the tests but breaks them. Report every place in the code this pull request adds or changes where the problem is present. A separate pass checks each candidate against the code, so a real problem you leave out costs more than a doubtful one you report.
 
-For each candidate give the path and line in the head commit, the symbol (function, class or field), the problem in the code's own terms, a short quote of the code that shows it, and the concrete fix: the type, the split or the deletion.
+For each candidate give the path, the first and last line in the head commit of the smallest piece of code that shows the problem (the same number twice for one line), the symbol (function, class or field), the problem in the code's own terms, a short quote of the code that shows it, and the concrete fix: the type, the split or the deletion.

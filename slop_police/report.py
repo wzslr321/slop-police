@@ -12,8 +12,15 @@ def as_markdown(review: Review) -> str:
 
 
 def _numbered(number: int, comment: Comment) -> str:
-    place = "the whole change" if comment.path is None else f"`{comment.path}:{comment.line}`"
-    return f"{number}. {place}\n\n{comment.body}"
+    return f"{number}. {_place(comment)}\n\n{comment.body}"
+
+
+def _place(comment: Comment) -> str:
+    if comment.path is None:
+        return "the whole change"
+    if comment.lines is None:
+        return f"`{comment.path}`"
+    return f"`{comment.path}:{comment.lines}`"
 
 
 def as_json(review: Review) -> str:
