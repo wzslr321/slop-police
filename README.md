@@ -61,3 +61,80 @@ A `.review` folder (or another one, with `--config`):
 | `[harness]` `name`, `auth`, `model` | Which harness runs the sessions, who pays, and the model. Without them: `claude`, `plan`, the CLI's own model. |
 
 A lens is a prompt for one kind of problem: the rule it rests on, what to look for, and the exceptions.
+
+## In GitHub Actions
+
+Two composite actions run in two jobs. The root action reviews the pull request and uploads the comments as an artifact. `post` puts them on the pull request as one review that only comments. The job that holds the model's credential cannot write to the pull request, and the job that writes holds no credential.
+
+The review reads `.review` as the base commit has it, so a pull request cannot change the lenses that review it. While the base has no `.review`, the `config` input names another folder.
+
+A comment on a line the diff shows becomes an inline comment. Any other goes into the review body under its path and line.
+
+slop-police is a private repository, so a consumer checks it out with a deploy key. Add the public key as a read-only deploy key of `wzslr321/slop-police`, and the private key as the secret `SLOP_POLICE_DEPLOY_KEY` of the consumer. A maintainer starts a review with the label `slop-police`:
+
+```yaml
+name: slop-police
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  review:
+    if: github.event.label.name == 'slop-police'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: code
+          persist-credentials: false
+
+      - name: Check out slop-police
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: wzslr321/slop-police
+          ref: <a commit of slop-police>
+          ssh-key: ${{ secrets.SLOP_POLICE_DEPLOY_KEY }}
+          path: slop-police
+          persist-credentials: false
+
+      - name: Review
+        uses: ./slop-police
+        with:
+          repo: code
+          base: ${{ github.event.pull_request.base.sha }}
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  post:
+    needs: review
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check out slop-police
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: wzslr321/slop-police
+          ref: <a commit of slop-police>
+          ssh-key: ${{ secrets.SLOP_POLICE_DEPLOY_KEY }}
+          path: slop-police
+          persist-credentials: false
+
+      - name: Post
+        uses: ./slop-police/post
+```
+
+The review action also takes `harness`, `auth`, `model` and `parallel` in place of the configuration, `anthropic-api-key` and `codex-api-key` for `auth = "api"`, and `claude-code-version` and `codex-version`. It installs only the CLI that will run. Codex on a ChatGPT plan is not supported in Actions: its login would have to be written back to the secret store after every job. `post` takes `dry-run: true` to print the request instead of sending it.
+
+### What to trust
+
+- The reviewer reads the pull request's code with read-only tools and never builds or runs it.
+- Claude Code loads `.claude/settings.json` from the checkout, so hooks and permission rules there apply in the review job. Whoever can push a branch can also change the workflow, which runs with the secrets on `pull_request`, so this gives a branch nothing it did not have.
+- Pull requests from forks get no secrets on `pull_request`, so their review stops at the missing sign-in. That is by design.
+- The label is the gate: nothing runs and nothing is spent until a maintainer adds it.
+- Before a review leaves the engine, the value of every credential variable that is set (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_API_KEY`, `OPENAI_API_KEY`) becomes `[redacted]` in the comments and the dropped reasons. The reviewer can read files, on Linux also `/proc/self/environ`. A secret it encodes, splits or rewrites passes the redaction.
