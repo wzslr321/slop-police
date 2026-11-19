@@ -11,7 +11,7 @@ from slop_police.change import Change
 from slop_police.codex import _strict
 from slop_police.comments import Comment
 from slop_police.config import load_config
-from slop_police.harness import Answer, Usage
+from slop_police.harness import Answer, HarnessFailed, Usage
 from slop_police.process import CANDIDATES_SCHEMA, VERDICTS_SCHEMA
 
 CONFIG = """
@@ -54,6 +54,19 @@ class ScriptedHarness:
         return Answer({"comments": [*merged, {"path": None, "line": None, "body": "a third one"}]}, Usage(5, 1, None))
 
 
+@dataclass
+class MiscountingHarness(ScriptedHarness):
+    """Checks the two candidates of each lens with one verdict per index in `judged`."""
+
+    judged: tuple[int, ...] = ()
+
+    def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
+        if schema is VERDICTS_SCHEMA:
+            verdicts = [{"candidate": index, "keep": True, "reason": "", "comment": "fix it"} for index in self.judged]
+            return Answer({"verdicts": verdicts}, Usage())
+        return super().ask(prompt, schema, cwd, read_code)
+
+
 def _candidate(problem: str) -> dict:
     return {"path": "shop.py", "line": 1, "symbol": "total", "problem": problem, "evidence": "x", "fix": "y"}
 
@@ -94,6 +107,21 @@ class ProcessTest(unittest.TestCase):
 
         self.assertEqual((usage.input_tokens, usage.output_tokens), (45, 5))
         self.assertIsNone(usage.cost_usd)
+
+    def test_a_candidate_without_exactly_one_verdict_stops_the_run(self) -> None:
+        problems = {
+            "no verdict for #0, #1": (),
+            "more than one verdict for #0": (0, 1, 0),
+            "verdicts for candidates that do not exist: #2": (0, 1, 2),
+        }
+        for problem, judged in problems.items():
+            with self.subTest(problem):
+                self.harness = MiscountingHarness(judged=judged)
+
+                with self.assertRaises(HarnessFailed) as stopped:
+                    self.review()
+
+                self.assertEqual(str(stopped.exception), f"The check of lens `naming` gave {problem}.")
 
 
 class CodexSchemaTest(unittest.TestCase):

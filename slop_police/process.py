@@ -1,5 +1,6 @@
 import json
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -53,6 +54,10 @@ VERDICTS_SCHEMA = {
     },
     "required": ["verdicts"],
 }
+
+
+class VerdictsDoNotMatch(HarnessFailed):
+    """The check of a lens did not give each of its candidates exactly one verdict."""
 
 
 @dataclass(frozen=True)
@@ -113,8 +118,38 @@ def _through_lens(harness: Harness, change: Change, config: Config, context: str
         return Checked([], [], found.usage)
     verify_prompt = _verify_prompt(change, config, lens_text, candidates)
     verified = harness.ask(verify_prompt, VERDICTS_SCHEMA, change.checkout, read_code=True)
-    comments, dropped = _sort_verdicts(candidates, verified.output["verdicts"])
+    verdicts = verified.output["verdicts"]
+    _check_one_verdict_each(lens, candidates, verdicts)
+    comments, dropped = _sort_verdicts(candidates, verdicts)
     return Checked(comments, dropped, found.usage + verified.usage)
+
+
+def _check_one_verdict_each(lens: str, candidates: list[Candidate], verdicts: list[dict]) -> None:
+    """Without this, a skipped candidate would pass as no finding, and a repeated one would become two comments."""
+    counted = Counter(verdict["candidate"] for verdict in verdicts)
+    indexes = range(len(candidates))
+    missing = [index for index in indexes if counted[index] == 0]
+    repeated = [index for index in indexes if counted[index] > 1]
+    unknown = sorted(index for index in counted if index not in indexes)
+    if missing or repeated or unknown:
+        raise VerdictsDoNotMatch(_mismatch(lens, missing, repeated, unknown))
+
+
+def _mismatch(lens: str, missing: list[int], repeated: list[int], unknown: list[int]) -> str:
+    problems = [
+        f"{problem} {_listed(indexes)}"
+        for problem, indexes in [
+            ("no verdict for", missing),
+            ("more than one verdict for", repeated),
+            ("verdicts for candidates that do not exist:", unknown),
+        ]
+        if indexes
+    ]
+    return f"The check of lens `{lens}` gave {'; '.join(problems)}."
+
+
+def _listed(indexes: list[int]) -> str:
+    return ", ".join(f"#{index}" for index in indexes)
 
 
 def _sort_verdicts(candidates: list[Candidate], verdicts: list[dict]) -> tuple[list[Comment], list[Dropped]]:
