@@ -18,6 +18,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--base", default="origin/main", help="the branch this one will merge into")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="the checkout to review")
     parser.add_argument("--config", type=Path, help="the review folder, by default .review in the checkout")
+    parser.add_argument("--pull-request", type=int, help="the number of the pull request under review, if it has one")
     parser.add_argument("--title", help="by default the branch name")
     parser.add_argument("--description-file", type=Path, help="by default the commit messages")
     parser.add_argument("--json", type=Path, help="also write comments, dropped candidates and cost to this file")
@@ -30,7 +31,10 @@ def _arguments() -> argparse.Namespace:
 
 def _change(arguments: argparse.Namespace, checkout: Path) -> Change:
     description = arguments.description_file.read_text() if arguments.description_file else None
-    return branch_change(checkout, arguments.base, arguments.title, description)
+    change = branch_change(checkout, arguments.base, arguments.title, description)
+    if arguments.pull_request is None:
+        return change
+    return replace(change, label=f"pull request #{arguments.pull_request}")
 
 
 def _config(arguments: argparse.Namespace, checkout: Path) -> Config:
