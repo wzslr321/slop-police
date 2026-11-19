@@ -46,7 +46,8 @@ class Codex:
             "codex",
             "exec",
             *(["--model", self.model] if self.model else []),
-            # User configuration is skipped so that no plugin or MCP server of this machine reaches the reviewer.
+            # No plugin or MCP server of this machine reaches the reviewer, and a checkout this machine trusts stays
+            # untrusted, so Codex skips its .codex config, rules and MCP servers.
             "--ignore-user-config",
             "--ephemeral",
             "--skip-git-repo-check",
