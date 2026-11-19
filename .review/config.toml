@@ -1,0 +1,14 @@
+# How slop-police reviews its own pull requests. Nobody has measured these lenses.
+
+name = "wzslr321/slop-police"
+about = "a code review engine in Python, standard library only, that runs coding agents with read-only tools and merges what they find"
+
+rules = ["README.md"]
+lenses = ["readability", "noise"]
+
+priority = "Code that is hard to read comes before comments, docs and tests that add nothing. Within a kind, the review process and the harnesses come before the GitHub Action, the tests and the README."
+
+[harness]
+name = "claude"
+auth = "plan"
+model = "claude-sonnet-5-5"
