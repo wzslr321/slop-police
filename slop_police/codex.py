@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from slop_police.harness import Answer, Auth, HarnessFailed, Usage, environment_for, run_session
+from slop_police.harness import Answer, Auth, HarnessFailed, PayerVariables, Usage, run_session
 
-# `codex exec` takes a key it finds over the ChatGPT login.
-API_VARIABLES = ("CODEX_API_KEY", "OPENAI_API_KEY")
+# `codex exec` takes CODEX_API_KEY over the ChatGPT login. OPENAI_API_KEY never reaches it, so that only one key can pay.
+PAYERS = PayerVariables(plan=(), api=("CODEX_API_KEY",), elsewhere=("OPENAI_API_KEY",))
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class Codex:
         if self.auth is Auth.API:
             return None if os.environ.get("CODEX_API_KEY") else 'auth = "api" needs CODEX_API_KEY in the environment.'
         status = subprocess.run(
-            ["codex", "login", "status"], capture_output=True, text=True, env=environment_for(self.auth, API_VARIABLES)
+            ["codex", "login", "status"], capture_output=True, text=True, env=PAYERS.environment(self.auth)
         )
         signed_in = "ChatGPT" in status.stdout + status.stderr
         return None if signed_in else "Codex is not signed in with ChatGPT: run `codex login`."
@@ -35,7 +35,7 @@ class Codex:
             schema_file.write_text(json.dumps(_strict(schema)))
             nothing_to_read.mkdir()
             command = self._command(schema_file, answer_file, cwd if read_code else nothing_to_read)
-            completed = run_session(command, prompt, None, environment_for(self.auth, API_VARIABLES))
+            completed = run_session(command, prompt, None, PAYERS.environment(self.auth))
             events = _events(completed.stdout)
             if completed.returncode != 0 or not answer_file.exists():
                 raise HarnessFailed(_failure(events) or completed.stderr[-2000:])

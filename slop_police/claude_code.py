@@ -4,15 +4,13 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from slop_police.harness import Answer, Auth, HarnessFailed, Usage, environment_for, run_session
+from slop_police.harness import Answer, Auth, HarnessFailed, PayerVariables, Usage, run_session
 
-# Claude Code takes each of these over a subscription login, in `-p` mode without asking.
-API_VARIABLES = (
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
+PAYERS = PayerVariables(
+    plan=("CLAUDE_CODE_OAUTH_TOKEN",),
+    api=("ANTHROPIC_API_KEY",),
+    # A gateway's token and the switches to another cloud, which Claude Code takes over both of the above.
+    elsewhere=("ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"),
 )
 
 READ_ONLY_TOOLS = (
@@ -31,20 +29,45 @@ NO_SETTINGS = ("--setting-sources", "")
 
 
 @dataclass(frozen=True)
+class SignIn:
+    """Who Claude Code would bill, as `claude auth status` reports it."""
+
+    method: str
+    provider: str
+    key_source: str | None = None
+
+    def __str__(self) -> str:
+        source = f', apiKeySource "{self.key_source}"' if self.key_source else ""
+        return f'authMethod "{self.method}", apiProvider "{self.provider}"{source}'
+
+
+NOT_SIGNED_IN = "none"
+
+# The sign-ins through which the one who pays is the one each `Auth` names.
+PAYING_SIGN_INS = {
+    Auth.PLAN: (SignIn("claude.ai", "firstParty"), SignIn("oauth_token", "firstParty")),
+    Auth.API: (SignIn("api_key", "firstParty", "ANTHROPIC_API_KEY"),),
+}
+
+
+@dataclass(frozen=True)
 class ClaudeCode:
     auth: Auth
     model: str | None = None
     read_also: tuple[Path, ...] = ()
 
     def login_problem(self) -> str | None:
-        if self.auth is Auth.API:
-            return None if os.environ.get("ANTHROPIC_API_KEY") else 'auth = "api" needs ANTHROPIC_API_KEY in the environment.'
-        if _signed_in(environment_for(self.auth, API_VARIABLES)):
+        if self.auth is Auth.API and not os.environ.get("ANTHROPIC_API_KEY"):
+            return 'auth = "api" needs ANTHROPIC_API_KEY in the environment.'
+        sign_in = _sign_in(PAYERS.environment(self.auth))
+        if sign_in in PAYING_SIGN_INS[self.auth]:
             return None
-        return "Claude Code is not signed in: run `claude auth login`, or set CLAUDE_CODE_OAUTH_TOKEN."
+        if self.auth is Auth.PLAN and sign_in.method == NOT_SIGNED_IN:
+            return "Claude Code is not signed in: run `claude auth login`, or set CLAUDE_CODE_OAUTH_TOKEN."
+        return f'auth = "{self.auth.value}", but `claude auth status` reports {sign_in}: someone else would pay.'
 
     def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
-        completed = run_session(self._command(schema, read_code), prompt, cwd, environment_for(self.auth, API_VARIABLES))
+        completed = run_session(self._command(schema, read_code), prompt, cwd, PAYERS.environment(self.auth))
         if completed.returncode != 0:
             raise HarnessFailed(completed.stderr or completed.stdout)
         return _answer(json.loads(completed.stdout))
@@ -67,12 +90,14 @@ class ClaudeCode:
         return [*command, *also, "--tools", "Read", "Grep", "Glob", "Bash", "--allowedTools", *READ_ONLY_TOOLS]
 
 
-def _signed_in(environment: dict[str, str]) -> bool:
-    status = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, env=environment)
+def _sign_in(environment: dict[str, str]) -> SignIn:
+    """Asked with the sessions' settings, which are none, so that it reports the sign-in they will use."""
+    status = subprocess.run(["claude", *NO_SETTINGS, "auth", "status"], capture_output=True, text=True, env=environment)
     try:
-        return bool(json.loads(status.stdout).get("loggedIn"))
-    except json.JSONDecodeError:
-        return False
+        reported = json.loads(status.stdout)
+    except json.JSONDecodeError as error:
+        raise HarnessFailed(f"`claude auth status` printed no JSON: {status.stderr or status.stdout}") from error
+    return SignIn(reported["authMethod"], reported["apiProvider"], reported.get("apiKeySource"))
 
 
 def _answer(result: dict) -> Answer:

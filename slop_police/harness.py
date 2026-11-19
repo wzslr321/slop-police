@@ -65,8 +65,16 @@ def run_session(command: list[str], prompt: str, cwd: Path | None, environment: 
         raise HarnessFailed(f"`{command[0]}` gave no answer in {SESSION_TIMEOUT_SECONDS // 60} minutes.") from timeout
 
 
-def environment_for(auth: Auth, api_variables: tuple[str, ...]) -> dict[str, str]:
-    """With `Auth.PLAN` the API variables are left out, because each CLI takes a key it finds over the subscription."""
-    if auth is Auth.API:
-        return dict(os.environ)
-    return {name: value for name, value in os.environ.items() if name not in api_variables}
+@dataclass(frozen=True)
+class PayerVariables:
+    """The environment variables through which a CLI picks who pays: those of each `Auth`, and those of anyone else."""
+
+    plan: tuple[str, ...]
+    api: tuple[str, ...]
+    elsewhere: tuple[str, ...]
+
+    def environment(self, auth: Auth) -> dict[str, str]:
+        """This process's environment without the variables through which someone other than `auth` would pay."""
+        kept = self.plan if auth is Auth.PLAN else self.api
+        dropped = {*self.plan, *self.api, *self.elsewhere} - {*kept}
+        return {name: value for name, value in os.environ.items() if name not in dropped}
