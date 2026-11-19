@@ -2,10 +2,10 @@ import argparse
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from slop_police.comments import Comment, comments_from
+from slop_police.comments import Comment, Lines, comments_from
 from slop_police.github.diff import RightSide, right_side
 
 
@@ -21,8 +21,9 @@ class PullRequest:
 
 @dataclass(frozen=True)
 class Placement:
+    # Cut to the lines the diff shows in one hunk.
     inline: tuple[Comment, ...]
-    # The comments whose line the diff does not show, and those about a whole file or the whole change.
+    # The comments whose lines the diff does not show, and those about a whole file or the whole change.
     in_body: tuple[Comment, ...]
 
 
@@ -32,13 +33,21 @@ def right_side_of(diff_file: Path) -> RightSide:
 
 
 def placed(comments: list[Comment], diff: RightSide) -> Placement:
-    def inline(comment: Comment) -> bool:
-        return comment.path is not None and comment.line is not None and diff.shows(comment.path, comment.line)
+    inline: list[Comment] = []
+    in_body: list[Comment] = []
+    for comment in comments:
+        lines = _shown_lines(comment, diff)
+        if lines is None:
+            in_body.append(comment)
+        else:
+            inline.append(replace(comment, line=lines.first, end_line=lines.last))
+    return Placement(tuple(inline), tuple(in_body))
 
-    return Placement(
-        inline=tuple(comment for comment in comments if inline(comment)),
-        in_body=tuple(comment for comment in comments if not inline(comment)),
-    )
+
+def _shown_lines(comment: Comment, diff: RightSide) -> Lines | None:
+    if comment.path is None or comment.lines is None:
+        return None
+    return diff.shown_part(comment.path, comment.lines)
 
 
 @dataclass(frozen=True)
@@ -54,11 +63,17 @@ class ReviewRequest:
             "commit_id": self.commit,
             "event": "COMMENT",
             "body": _body(self.placement),
-            "comments": [
-                {"path": comment.path, "line": comment.line, "side": "RIGHT", "body": comment.body}
-                for comment in self.placement.inline
-            ],
+            "comments": [_inline(comment) for comment in self.placement.inline],
         }
+
+
+def _inline(comment: Comment) -> dict:
+    """GitHub takes a range as its last `line` and its `start_line`, both on the right side, the head commit."""
+    lines = comment.lines
+    inline = {"path": comment.path, "line": lines.last, "side": "RIGHT", "body": comment.body}
+    if lines.first == lines.last:
+        return inline
+    return {**inline, "start_line": lines.first, "start_side": "RIGHT"}
 
 
 def _body(placement: Placement) -> str:
@@ -72,10 +87,10 @@ def _body(placement: Placement) -> str:
 def _section(comment: Comment) -> str:
     if comment.path is None:
         place = "The whole change"
-    elif comment.line is None:
+    elif comment.lines is None:
         place = f"`{comment.path}`"
     else:
-        place = f"`{comment.path}:{comment.line}`"
+        place = f"`{comment.path}:{comment.lines}`"
     return f"**{place}**\n\n{comment.body}"
 
 
