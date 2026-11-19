@@ -24,6 +24,7 @@ runs:
         name: ${{ inputs.artifact }}
         path: ${{ runner.temp }}/slop-police-review
 
+    # -P leaves the working folder off sys.path: a checkout's own slop_police or json.py must not run as the engine.
     - name: Post the review
       shell: bash
       env:
@@ -33,5 +34,5 @@ runs:
         DRY_RUN: ${{ inputs.dry-run == 'true' && '--dry-run' || '' }}
         REVIEW: ${{ runner.temp }}/slop-police-review
       run: |
-        python3 -m slop_police.github.post "$REVIEW/review.json" --diff "$REVIEW/change.diff" \
+        python3 -P -m slop_police.github.post "$REVIEW/review.json" --diff "$REVIEW/change.diff" \
           --commit "$(cat "$REVIEW/commit")" --repository "$GITHUB_REPOSITORY" --pull-request "$PULL_REQUEST" $DRY_RUN

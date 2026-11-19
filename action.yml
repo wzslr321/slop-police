@@ -45,6 +45,8 @@ inputs:
 runs:
   using: composite
   steps:
+    # Each python3 runs with -P, which leaves the working folder off sys.path:
+    # a checkout's own slop_police or json.py must not run as the engine.
     - name: Read the review configuration
       id: prepare
       shell: bash
@@ -56,7 +58,7 @@ runs:
         HARNESS: ${{ inputs.harness }}
         AUTH: ${{ inputs.auth }}
       run: |
-        python3 -m slop_police.github.prepare --repo "$REPO" --base "$BASE" --into "$RUNNER_TEMP/slop-police/config" \
+        python3 -P -m slop_police.github.prepare --repo "$REPO" --base "$BASE" --into "$RUNNER_TEMP/slop-police/config" \
           ${CONFIG:+--config "$CONFIG"} ${HARNESS:+--harness "$HARNESS"} ${AUTH:+--auth "$AUTH"} >> "$GITHUB_OUTPUT"
 
     - name: Install Claude Code
@@ -96,7 +98,7 @@ runs:
       run: |
         mkdir -p "$RUNNER_TEMP/slop-police/review"
         printf '%s' "$DESCRIPTION" > "$RUNNER_TEMP/slop-police/description.md"
-        python3 -m slop_police --base "$BASE" --config "$CONFIG" --harness "$HARNESS" --auth "$AUTH" \
+        python3 -P -m slop_police --base "$BASE" --config "$CONFIG" --harness "$HARNESS" --auth "$AUTH" \
           --parallel "$PARALLEL" ${MODEL:+--model "$MODEL"} \
           ${PULL_REQUEST:+--pull-request "$PULL_REQUEST"} ${TITLE:+--title "$TITLE"} \
           --description-file "$RUNNER_TEMP/slop-police/description.md" \
