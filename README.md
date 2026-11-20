@@ -60,7 +60,7 @@ A `.review` folder (or another one, with `--config`):
 | `max_comments` | Keep only the first comments after the editor. Without it, all. |
 | `[harness]` `name`, `auth`, `model`, `effort` | Which harness runs the sessions, who pays, the model, and how hard it reasons: `low`, `medium`, `high` or `xhigh`, the levels both CLIs take. Without them: `claude`, `plan`, the CLI's own model and effort. |
 
-A lens is a prompt for one kind of problem: the rule it rests on, what to look for, and the exceptions.
+A lens is a prompt for one kind of problem: the rule it rests on, what to look for, and the exceptions. A lens may also be about the pull request's description: its comments quote a sentence of the description instead of naming a place in the code, and on GitHub they go into the review body.
 
 ## In GitHub Actions
 

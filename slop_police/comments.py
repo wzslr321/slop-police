@@ -46,7 +46,7 @@ class Comment:
 
     @property
     def lines(self) -> Lines | None:
-        """None for a comment about a whole file or the whole change."""
+        """None for a comment about a whole file or the description."""
         if self.line is None:
             return None
         return Lines(self.line, max(self.line, self.end_line or self.line))

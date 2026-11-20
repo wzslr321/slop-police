@@ -26,7 +26,7 @@ class PullRequest:
 class Placement:
     # Cut to the lines the diff shows in one hunk.
     inline: tuple[Comment, ...]
-    # The comments whose lines the diff does not show, and those about a whole file or the whole change.
+    # The comments whose lines the diff does not show, and those about a whole file or the description.
     in_body: tuple[Comment, ...]
 
 
@@ -84,13 +84,15 @@ def _body(placement: Placement) -> str:
     if not placement.in_body:
         return f"slop-police: {_comments(total)} on the diff."
     summary = f"slop-police: {_comments(total)}, {len(placement.in_body)} of them not on a line of the diff:"
-    return "\n\n".join([summary, *map(_section, placement.in_body)])
+    sections = [_section(comment) for comment in placement.in_body if comment.path is not None]
+    on_description = [comment.body for comment in placement.in_body if comment.path is None]
+    if on_description:
+        sections.append("\n\n".join(["**The description**", *on_description]))
+    return "\n\n".join([summary, *sections])
 
 
 def _section(comment: Comment) -> str:
-    if comment.path is None:
-        place = "The whole change"
-    elif comment.lines is None:
+    if comment.lines is None:
         place = f"`{comment.path}`"
     else:
         place = f"`{comment.path}:{comment.lines}`"
