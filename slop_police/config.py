@@ -2,7 +2,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from slop_police.harness import Auth
+from slop_police.harness import Auth, Effort
 from slop_police.harnesses import HarnessChoice, HarnessName
 
 
@@ -46,4 +46,5 @@ def _harness_choice(table: dict) -> HarnessChoice:
         name=HarnessName(table.get("name", HarnessName.CLAUDE.value)),
         auth=Auth(table.get("auth", Auth.PLAN.value)),
         model=table.get("model"),
+        effort=Effort(table["effort"]) if "effort" in table else None,
     )
