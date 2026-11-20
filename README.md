@@ -77,11 +77,14 @@ name: slop-police
 
 on:
   pull_request:
-    types: [labeled]
+    types: [labeled, unlabeled]
 
 jobs:
   review:
-    if: github.event.label.name == 'slop-police'
+    if: github.event.action == 'labeled' && github.event.label.name == 'slop-police'
+    concurrency:
+      group: slop-police-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -99,6 +102,17 @@ jobs:
           base: ${{ github.event.pull_request.base.sha }}
           codex-api-key: ${{ secrets.CODEX_API_KEY }}
 
+  stop:
+    if: github.event.action == 'unlabeled' && github.event.label.name == 'slop-police'
+    concurrency:
+      group: slop-police-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Stop the review
+        run: echo "The label slop-police was removed."
+
   post:
     needs: review
     runs-on: ubuntu-latest
@@ -108,6 +122,8 @@ jobs:
       - name: Post
         uses: wzslr321/slop-police/post@v1
 ```
+
+Adding the label again cancels the review that runs, and removing the label stops it: `review` and `stop` share one concurrency group per pull request, and a job that joins it cancels the one that runs. A cancelled review posts nothing. The group is on the jobs and not on the workflow, which starts on every label: a group on the workflow would cancel a review when someone adds another label.
 
 The example passes `codex-api-key` because the `[harness]` it expects in `.review/config.toml` names `codex` with `auth = "api"`. Pass the input that matches yours.
 
@@ -119,7 +135,7 @@ The review action also takes `harness`, `auth`, `model`, `effort` and `parallel`
 - The engine itself runs no code from the checkout. It starts with `python3 -P`, so a `slop_police` package or a `json.py` in the checkout is only a file to read. Claude Code reads no settings file, neither the branch's nor the runner's, so their hooks, permission rules, `env` and `apiKeyHelper` do not apply, and it does not load the checkout's `CLAUDE.md` either. Codex ignores the `.codex` config, hooks and rules of a project it does not trust, and a fresh runner trusts none.
 - On `pull_request` the workflow file comes from the pull request's branch. Whoever can push a branch to the repository can change what runs with the secrets, so the points above guard against the code under review, not against that person.
 - Pull requests from forks get no secrets on `pull_request`, so their review stops at the missing key. That is by design.
-- The label is the gate: nothing runs and nothing is spent until a maintainer adds it.
+- The label is the gate: nothing runs and nothing is spent until a maintainer adds it. Removing it cancels a review that runs, and what the model has read until then is paid.
 - Before a review leaves the engine, the value of every credential variable that is set (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_API_KEY`, `OPENAI_API_KEY`) becomes `[redacted]` in the comments and the dropped reasons. The reviewer can read files, on Linux also `/proc/self/environ`. A secret it encodes, splits or rewrites passes the redaction.
 
 ## License
