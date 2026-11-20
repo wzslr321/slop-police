@@ -1,6 +1,6 @@
 [project]
 name = "slop-police"
-version = "1.1.0"
+version = "1.1.1"
 description = "Reviews a branch before its pull request, with the lenses and rules of the repository under review."
 readme = "README.md"
 license = "MIT"
