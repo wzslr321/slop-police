@@ -1,0 +1,40 @@
+name: probe-concurrency
+
+# Throwaway: the job structure of tandem's slop-police workflow, with sleep in place of the review.
+on:
+  pull_request:
+    types: [labeled, unlabeled]
+
+jobs:
+  review:
+    name: Review
+    if: github.event.action == 'labeled' && github.event.label.name == 'probe-concurrency'
+    concurrency:
+      group: probe-concurrency-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Review
+        run: sleep 120
+
+  stop:
+    name: Stop the review
+    if: github.event.action == 'unlabeled' && github.event.label.name == 'probe-concurrency'
+    concurrency:
+      group: probe-concurrency-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Stop
+        run: echo "The label probe-concurrency was removed."
+
+  post:
+    name: Post the review
+    needs: review
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Post
+        run: echo "posted"
