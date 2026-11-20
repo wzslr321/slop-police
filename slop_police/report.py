@@ -17,7 +17,7 @@ def _numbered(number: int, comment: Comment) -> str:
 
 def _place(comment: Comment) -> str:
     if comment.path is None:
-        return "the whole change"
+        return "the description"
     if comment.lines is None:
         return f"`{comment.path}`"
     return f"`{comment.path}:{comment.lines}`"

@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from slop_police import process
 from slop_police.change import Change
 from slop_police.codex import _strict
-from slop_police.comments import Comment
+from slop_police.comments import COMMENTS_SCHEMA, Comment
 from slop_police.config import load_config
 from slop_police.harness import Answer, HarnessFailed, Usage
 from slop_police.process import CANDIDATES_SCHEMA, VERDICTS_SCHEMA
@@ -64,6 +64,34 @@ class MiscountingHarness(ScriptedHarness):
         if schema is VERDICTS_SCHEMA:
             verdicts = [{"candidate": index, "keep": True, "reason": "", "comment": "fix it"} for index in self.judged]
             return Answer({"verdicts": verdicts}, Usage())
+        return super().ask(prompt, schema, cwd, read_code)
+
+
+@dataclass
+class DescribingHarness(ScriptedHarness):
+    """The lens `tests` keeps a candidate about the description, and the editor rewrites every body it is given."""
+
+    def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
+        if schema is CANDIDATES_SCHEMA and "Lens: tests" in prompt:
+            no_place = {"path": None, "line": None, "end_line": None, "symbol": None}
+            about_the_description = {**no_place, "problem": "p", "evidence": "Sums the cart.", "fix": "f"}
+            return Answer({"candidates": [about_the_description, _candidate("tests wrong")]}, Usage())
+        if schema is COMMENTS_SCHEMA:
+            rewritten = [{"path": "shop.py", "line": 1, "body": "naming: rewritten"}]
+            if "Sums the cart." in prompt:
+                rewritten.append({"path": None, "line": None, "body": "tests: rewritten"})
+            return Answer({"comments": rewritten}, Usage())
+        return super().ask(prompt, schema, cwd, read_code)
+
+
+@dataclass
+class WholeFileHarness(ScriptedHarness):
+    """The lens `tests` keeps a candidate that names a file and no lines."""
+
+    def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
+        if schema is CANDIDATES_SCHEMA and "Lens: tests" in prompt:
+            whole_file = {**_candidate("tests kept"), "line": None, "end_line": None, "symbol": None}
+            return Answer({"candidates": [whole_file, _candidate("tests wrong")]}, Usage())
         return super().ask(prompt, schema, cwd, read_code)
 
 
@@ -122,6 +150,29 @@ class ProcessTest(unittest.TestCase):
                     self.review()
 
                 self.assertEqual(str(stopped.exception), f"The check of lens `naming` gave {problem}.")
+
+    def test_a_candidate_without_a_path_is_checked_against_the_description(self) -> None:
+        self.harness = DescribingHarness()
+
+        self.review()
+
+        check = [prompt for prompt in self.harness.prompts if "Candidates, numbered" in prompt][-1]
+        self.assertIn("Description:\n\nSums the cart.", check)
+
+    def test_a_comment_on_the_description_passes_the_editor_by_with_its_quote(self) -> None:
+        self.harness = DescribingHarness()
+
+        review = self.review()
+
+        on_the_description = Comment(None, None, "> Sums the cart.\n\ntests: fix it")
+        self.assertEqual(review.comments, [Comment("shop.py", 1, "naming: rewritten", end_line=3), on_the_description])
+
+    def test_a_candidate_with_a_path_and_no_lines_does_not_stop_the_run(self) -> None:
+        self.harness = WholeFileHarness()
+
+        review = self.review()
+
+        self.assertEqual(review.comments[0], Comment("shop.py", 1, "naming: fix it", end_line=3))
 
 
 class CodexSchemaTest(unittest.TestCase):

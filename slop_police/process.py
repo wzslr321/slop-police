@@ -21,10 +21,10 @@ CANDIDATES_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "end_line": {"type": "integer"},
-                    "symbol": {"type": "string"},
+                    "path": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "end_line": {"type": ["integer", "null"]},
+                    "symbol": {"type": ["string", "null"]},
                     "problem": {"type": "string"},
                     "evidence": {"type": "string"},
                     "fix": {"type": "string"},
@@ -62,7 +62,7 @@ class VerdictsDoNotMatch(HarnessFailed):
 
 
 @dataclass(frozen=True)
-class Candidate:
+class CodeCandidate:
     path: str
     line: int
     end_line: int
@@ -70,6 +70,25 @@ class Candidate:
     problem: str
     evidence: str
     fix: str
+
+    def comment(self, body: str) -> Comment:
+        return Comment(self.path, self.line, body, self.end_line)
+
+
+@dataclass(frozen=True)
+class DescriptionCandidate:
+    """About the sentence of the pull request's description that `evidence` quotes."""
+
+    problem: str
+    evidence: str
+    fix: str
+
+    def comment(self, body: str) -> Comment:
+        """The sentence stands in for a place in the code."""
+        return Comment(None, None, f"> {self.evidence}\n\n{body}")
+
+
+Candidate = CodeCandidate | DescriptionCandidate
 
 
 @dataclass(frozen=True)
@@ -95,7 +114,7 @@ def review(change: Change, config: Config, parallel: int = 1, harness: Harness |
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         per_lens = list(pool.map(lambda lens: _through_lens(harness, change, config, context, lens), config.lenses))
     checked = _combined(per_lens)
-    edited = _edited(harness, change, config, checked) if checked.comments else checked
+    edited = _edited(harness, change, config, checked)
     return Review(
         comments=edited.comments[: config.max_comments],
         dropped=edited.dropped,
@@ -115,7 +134,7 @@ def _ready_harness(config: Config) -> Harness:
 def _through_lens(harness: Harness, change: Change, config: Config, context: str, lens: str) -> Checked:
     lens_text = config.lens(lens)
     found = harness.ask(f"{context}\n{lens_text}", CANDIDATES_SCHEMA, change.checkout, read_code=True)
-    candidates = [Candidate(**item) for item in found.output["candidates"]]
+    candidates = [_candidate(item) for item in found.output["candidates"]]
     if not candidates:
         return Checked([], [], found.usage)
     verify_prompt = _verify_prompt(change, config, lens_text, candidates)
@@ -124,6 +143,12 @@ def _through_lens(harness: Harness, change: Change, config: Config, context: str
     _check_one_verdict_each(lens, candidates, verdicts)
     comments, dropped = _sort_verdicts(candidates, verdicts)
     return Checked(comments, dropped, found.usage + verified.usage)
+
+
+def _candidate(item: dict) -> Candidate:
+    if item["path"] is None:
+        return DescriptionCandidate(item["problem"], item["evidence"], item["fix"])
+    return CodeCandidate(**item)
 
 
 def _check_one_verdict_each(lens: str, candidates: list[Candidate], verdicts: list[dict]) -> None:
@@ -151,10 +176,9 @@ def _sort_verdicts(candidates: list[Candidate], verdicts: list[dict]) -> tuple[l
     for verdict in verdicts:
         candidate = candidates[verdict["candidate"]]
         if verdict["keep"]:
-            comments.append(Comment(candidate.path, candidate.line, verdict["comment"], candidate.end_line))
+            comments.append(candidate.comment(verdict["comment"]))
         else:
-            dropped_comment = Comment(candidate.path, candidate.line, candidate.problem, candidate.end_line)
-            dropped.append(Dropped(dropped_comment, verdict["reason"]))
+            dropped.append(Dropped(candidate.comment(candidate.problem), verdict["reason"]))
     return comments, dropped
 
 
@@ -167,20 +191,29 @@ def _combined(per_lens: list[Checked]) -> Checked:
 
 
 def _edited(harness: Harness, change: Change, config: Config, checked: Checked) -> Checked:
-    answer = harness.ask(_editor_prompt(change, config, checked.comments), COMMENTS_SCHEMA, change.checkout, read_code=False)
-    edited = _with_ranges(comments_from(answer.output), checked.comments)
-    return Checked(edited, checked.dropped, checked.usage + answer.usage)
+    """The editor rewrites what it gets, so the comments on the description pass it by with their quote as it is."""
+    on_code = [comment for comment in checked.comments if comment.path is not None]
+    if not on_code:
+        return checked
+    on_description = [comment for comment in checked.comments if comment.path is None]
+    answer = harness.ask(_editor_prompt(change, config, on_code), COMMENTS_SCHEMA, change.checkout, read_code=False)
+    edited = _with_ranges(comments_from(answer.output), on_code)
+    return Checked([*edited, *on_description], checked.dropped, checked.usage + answer.usage)
 
 
 def _with_ranges(edited: list[Comment], before: list[Comment]) -> list[Comment]:
     """The editor sees no code, so it gives one line, and the range comes from the comment it was given at that line.
 
     When two lenses found the same line, the merged comment gets the wider range. With no match it keeps one line.
+    A comment about a whole file has no range to give.
     """
     last_lines: dict[tuple[str | None, int | None], int] = {}
     for comment in before:
+        lines = comment.lines
+        if lines is None:
+            continue
         place = (comment.path, comment.line)
-        last_lines[place] = max(comment.end_line, last_lines.get(place, comment.end_line))
+        last_lines[place] = max(lines.last, last_lines.get(place, lines.last))
     return [replace(comment, end_line=last_lines.get((comment.path, comment.line), comment.line)) for comment in edited]
 
 
@@ -208,6 +241,8 @@ def _verify_prompt(change: Change, config: Config, lens_text: str, candidates: l
         base=change.base,
         rules=_named(config.rules),
         checkout_note=change.checkout_note,
+        title=change.title,
+        description=change.description,
         lens=lens_text,
         candidates=numbered,
     )
