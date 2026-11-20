@@ -1,8 +1,11 @@
 import argparse
 import json
+import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from slop_police.comments import Comment, Lines, comments_from
@@ -98,16 +101,64 @@ def _comments(count: int) -> str:
     return "1 comment" if count == 1 else f"{count} comments"
 
 
+# How `gh api` names an answer of 5xx on its error output, such as "gh: Server Error (HTTP 502)".
+SERVER_ERROR = re.compile(r"\(HTTP 5\d\d\)")
+LOOKS_FOR_THE_REVIEW = 3
+SECONDS_BETWEEN_LOOKS = 10
+# GitHub stamps the review with its own clock, the runner sent the request by its own.
+CLOCK_SKEW = timedelta(minutes=1)
+
+
 def _send(request: ReviewRequest) -> None:
+    sent_at = datetime.now(timezone.utc)
     posted = subprocess.run(
         ["gh", "api", "--method", "POST", request.pull_request.reviews_endpoint, "--input", "-"],
         input=json.dumps(request.payload()),
-        stdout=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
-    if posted.returncode != 0:
-        sys.exit(posted.returncode)
-    print(f"Posted {json.loads(posted.stdout)['html_url']}")
+    sys.stderr.write(posted.stderr)
+    if posted.returncode == 0:
+        print(f"Posted {json.loads(posted.stdout)['html_url']}")
+        return
+    if SERVER_ERROR.search(posted.stderr) and (url := _posted_anyway(request, sent_at)):
+        print(f"GitHub answered with a server error, but the review is on the pull request: {url}")
+        return
+    sys.exit(posted.returncode)
+
+
+def _posted_anyway(request: ReviewRequest, sent_at: datetime) -> str | None:
+    """The address of the review GitHub created before it answered with a server error.
+
+    A red job next to it invites a re-run, which posts it twice or pays for another review.
+    """
+    for look in range(LOOKS_FOR_THE_REVIEW):
+        if look:
+            time.sleep(SECONDS_BETWEEN_LOOKS)
+        for review in _reviews(request.pull_request):
+            if _is_from(review, request, sent_at):
+                return review["html_url"]
+    return None
+
+
+def _reviews(pull_request: PullRequest) -> list[dict]:
+    listed = subprocess.run(
+        ["gh", "api", "--paginate", "--slurp", f"{pull_request.reviews_endpoint}?per_page=100"],
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        return []
+    return [review for page in json.loads(listed.stdout) for review in page]
+
+
+def _is_from(review: dict, request: ReviewRequest, sent_at: datetime) -> bool:
+    """Whether `request` created `review`, and not an earlier review with the same body on the same commit."""
+    return (
+        review["commit_id"] == request.commit
+        and review["body"] == request.payload()["body"]
+        and datetime.fromisoformat(review["submitted_at"]) >= sent_at - CLOCK_SKEW
+    )
 
 
 def _arguments() -> argparse.Namespace:
