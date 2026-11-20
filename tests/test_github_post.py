@@ -1,12 +1,19 @@
 """Which comments GitHub can take on a line of the diff, and the review that carries them."""
 
+import io
+import json
+import os
+import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from slop_police.comments import Comment, Lines
 from slop_police.github.diff import right_side
-from slop_police.github.post import PullRequest, ReviewRequest, placed, right_side_of
+from slop_police.github.post import PullRequest, ReviewRequest, _send, placed, right_side_of
 
 DIFF = """\
 diff --git a/shop.py b/shop.py
@@ -107,6 +114,35 @@ class ReviewRequestTest(unittest.TestCase):
 
         self.assertEqual((payload["event"], payload["commit_id"]), ("COMMENT", "abc123"))
         self.assertEqual(self.request.pull_request.reviews_endpoint, "repos/owner/shop/pulls/7/reviews")
+
+    def test_a_review_github_created_before_a_server_error_counts_as_posted(self) -> None:
+        body = self.request.payload()["body"]
+        now = datetime.now(timezone.utc).isoformat()
+        earlier = {"commit_id": "abc123", "body": body, "submitted_at": "2026-01-01T10:00:00Z", "html_url": "earlier"}
+        created = {"commit_id": "abc123", "body": body, "submitted_at": now, "html_url": "created"}
+        output = io.StringIO()
+
+        with TemporaryDirectory() as folder, redirect_stdout(output), redirect_stderr(io.StringIO()):
+            _script_gh(Path(folder), reviews=[[earlier, created]])
+            with patch.dict(os.environ, {"PATH": f"{folder}{os.pathsep}{os.environ['PATH']}"}):
+                _send(self.request)
+
+        self.assertIn("the review is on the pull request: created", output.getvalue())
+
+
+def _script_gh(folder: Path, reviews: list[list[dict]]) -> None:
+    """A `gh` that answers the review with HTTP 502 and lists `reviews` as pages."""
+    (folder / "reviews.json").write_text(json.dumps(reviews))
+    gh = folder / "gh"
+    gh.write_text(
+        f"#!{sys.executable}\n"
+        "import pathlib, sys\n"
+        "if '--method' in sys.argv:\n"
+        "    sys.stdin.read()\n"
+        "    sys.exit('gh: Server Error (HTTP 502)')\n"
+        "print((pathlib.Path(sys.argv[0]).parent / 'reviews.json').read_text())\n"
+    )
+    gh.chmod(0o755)
 
 
 if __name__ == "__main__":
