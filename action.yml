@@ -20,6 +20,9 @@ inputs:
   model:
     description: Instead of the configured model.
     default: ''
+  effort:
+    description: low, medium, high or xhigh, instead of the configured effort.
+    default: ''
   parallel:
     description: Lenses that run at the same time.
     default: '3'
@@ -88,6 +91,7 @@ runs:
         HARNESS: ${{ steps.prepare.outputs.harness }}
         AUTH: ${{ steps.prepare.outputs.auth }}
         MODEL: ${{ inputs.model }}
+        EFFORT: ${{ inputs.effort }}
         PARALLEL: ${{ inputs.parallel }}
         PULL_REQUEST: ${{ github.event.pull_request.number }}
         TITLE: ${{ github.event.pull_request.title }}
@@ -99,7 +103,7 @@ runs:
         mkdir -p "$RUNNER_TEMP/slop-police/review"
         printf '%s' "$DESCRIPTION" > "$RUNNER_TEMP/slop-police/description.md"
         python3 -P -m slop_police --base "$BASE" --config "$CONFIG" --harness "$HARNESS" --auth "$AUTH" \
-          --parallel "$PARALLEL" ${MODEL:+--model "$MODEL"} \
+          --parallel "$PARALLEL" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} \
           ${PULL_REQUEST:+--pull-request "$PULL_REQUEST"} ${TITLE:+--title "$TITLE"} \
           --description-file "$RUNNER_TEMP/slop-police/description.md" \
           --json "$RUNNER_TEMP/slop-police/review/review.json"

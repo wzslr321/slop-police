@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from slop_police.harness import Answer, Auth, HarnessFailed, PayerVariables, Usage, run_session
+from slop_police.harness import Answer, Auth, Effort, HarnessFailed, PayerVariables, Usage, run_session
 
 # `codex exec` takes CODEX_API_KEY over the ChatGPT login. OPENAI_API_KEY never reaches it, so that only one key can pay.
 PAYERS = PayerVariables(plan=(), api=("CODEX_API_KEY",), elsewhere=("OPENAI_API_KEY",))
@@ -15,6 +15,7 @@ PAYERS = PayerVariables(plan=(), api=("CODEX_API_KEY",), elsewhere=("OPENAI_API_
 class Codex:
     auth: Auth
     model: str | None = None
+    effort: Effort | None = None
     # The read-only sandbox can read the whole disk, so this needs no flag.
     read_also: tuple[Path, ...] = ()
 
@@ -46,6 +47,7 @@ class Codex:
             "codex",
             "exec",
             *(["--model", self.model] if self.model else []),
+            *(["--config", f'model_reasoning_effort="{self.effort.value}"'] if self.effort else []),
             # No plugin or MCP server of this machine reaches the reviewer, and a checkout this machine trusts stays
             # untrusted, so Codex skips its .codex config, rules and MCP servers.
             "--ignore-user-config",

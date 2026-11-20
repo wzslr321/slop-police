@@ -6,7 +6,7 @@ from pathlib import Path
 
 from slop_police.change import Change, UncommittedChanges, branch_change
 from slop_police.config import Config, load_config
-from slop_police.harness import Auth, HarnessFailed
+from slop_police.harness import Auth, Effort, HarnessFailed
 from slop_police.harnesses import HarnessName
 from slop_police.process import review
 from slop_police.redaction import Redaction
@@ -26,6 +26,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--harness", choices=[name.value for name in HarnessName], help="instead of the configured one")
     parser.add_argument("--auth", choices=[auth.value for auth in Auth], help="instead of the configured one")
     parser.add_argument("--model", help="instead of the configured one")
+    parser.add_argument("--effort", choices=[effort.value for effort in Effort], help="instead of the configured one")
     return parser.parse_args()
 
 
@@ -43,6 +44,7 @@ def _config(arguments: argparse.Namespace, checkout: Path) -> Config:
         name=HarnessName(arguments.harness) if arguments.harness else None,
         auth=Auth(arguments.auth) if arguments.auth else None,
         model=arguments.model,
+        effort=Effort(arguments.effort) if arguments.effort else None,
     )
     return replace(config, harness=harness)
 

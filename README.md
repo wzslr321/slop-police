@@ -32,7 +32,7 @@ The sessions run in Claude Code or in Codex. `auth` says who pays, and slop-poli
 
 Both CLIs take an API key they find in the environment over the subscription, without asking, and Claude Code takes more variables over both, such as `ANTHROPIC_AUTH_TOKEN` or `CLAUDE_CODE_USE_BEDROCK`. So slop-police passes the CLI only the variable of the chosen `auth` and refuses to start when an `api` key is missing. Before the first session it asks `claude auth status` how Claude Code would sign in, and stops when someone else would pay.
 
-`--harness`, `--auth` and `--model` on the command line replace what the configuration names, for one run.
+`--harness`, `--auth`, `--model` and `--effort` on the command line replace what the configuration names, for one run.
 
 Claude Code reports what the tokens would cost through the API, also on a subscription. Codex reports tokens only.
 
@@ -58,7 +58,7 @@ A `.review` folder (or another one, with `--config`):
 | `ignore` | Patterns of changed files the reviewer does not list, such as generated code. |
 | `read_also` | Folders outside the checkout the reviewer may read. One that does not exist gets a warning. |
 | `max_comments` | Keep only the first comments after the editor. Without it, all. |
-| `[harness]` `name`, `auth`, `model` | Which harness runs the sessions, who pays, and the model. Without them: `claude`, `plan`, the CLI's own model. |
+| `[harness]` `name`, `auth`, `model`, `effort` | Which harness runs the sessions, who pays, the model, and how hard it reasons: `low`, `medium`, `high` or `xhigh`, the levels both CLIs take. Without them: `claude`, `plan`, the CLI's own model and effort. |
 
 A lens is a prompt for one kind of problem: the rule it rests on, what to look for, and the exceptions.
 
@@ -66,7 +66,7 @@ A lens is a prompt for one kind of problem: the rule it rests on, what to look f
 
 Two composite actions run in two jobs. The root action reviews the pull request and uploads the comments as an artifact. `post` puts them on the pull request as one review that only comments. The job that holds the model's credential cannot write to the pull request, and the job that writes holds no credential.
 
-The review reads `.review` as the base commit has it, so a pull request cannot change the lenses that review it. The harness, who pays and the model come from `[harness]` there, so each repository chooses its own. While the base has no `.review`, the `config` input names another folder.
+The review reads `.review` as the base commit has it, so a pull request cannot change the lenses that review it. The harness, who pays, the model and the effort come from `[harness]` there, so each repository chooses its own. While the base has no `.review`, the `config` input names another folder.
 
 A comment marks the lines of code it is about. On lines the diff shows it becomes an inline comment; GitHub takes a range only inside one hunk, so a range that runs past its hunk is cut to it. Any other comment goes into the review body under its path and lines.
 
@@ -111,7 +111,7 @@ jobs:
 
 The example passes `codex-api-key` because the `[harness]` it expects in `.review/config.toml` names `codex` with `auth = "api"`. Pass the input that matches yours.
 
-The review action also takes `harness`, `auth`, `model` and `parallel` in place of the configuration, `claude-code-oauth-token`, `anthropic-api-key` and `codex-api-key` for the credential the configuration needs, and `claude-code-version` and `codex-version`. It installs only the CLI that will run. Codex on a ChatGPT plan is not supported in Actions: its login would have to be written back to the secret store after every job. `post` takes `dry-run: true` to print the request instead of sending it.
+The review action also takes `harness`, `auth`, `model`, `effort` and `parallel` in place of the configuration, `claude-code-oauth-token`, `anthropic-api-key` and `codex-api-key` for the credential the configuration needs, and `claude-code-version` and `codex-version`. It installs only the CLI that will run. Codex on a ChatGPT plan is not supported in Actions: its login would have to be written back to the secret store after every job. `post` takes `dry-run: true` to print the request instead of sending it.
 
 ### What to trust
 

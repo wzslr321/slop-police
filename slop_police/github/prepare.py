@@ -50,7 +50,7 @@ def named_review_folder(folder: Path) -> Path:
 
 
 def harness_in_actions(config_folder: Path, name: HarnessName | None, auth: Auth | None) -> HarnessChoice:
-    choice = load_config(config_folder).harness.overridden(name, auth, model=None)
+    choice = load_config(config_folder).harness.overridden(name, auth, model=None, effort=None)
     if choice.name is HarnessName.CODEX and choice.auth is Auth.PLAN:
         raise NotReady(CODEX_PLAN)
     return choice

@@ -13,6 +13,15 @@ class Auth(Enum):
     API = "api"
 
 
+class Effort(Enum):
+    """How hard the model reasons, in the levels that both Claude Code and Codex take."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
 @dataclass(frozen=True)
 class Usage:
     input_tokens: int = 0

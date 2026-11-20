@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from slop_police.harness import Answer, Auth, HarnessFailed, PayerVariables, Usage, run_session
+from slop_police.harness import Answer, Auth, Effort, HarnessFailed, PayerVariables, Usage, run_session
 
 PAYERS = PayerVariables(
     plan=("CLAUDE_CODE_OAUTH_TOKEN",),
@@ -66,6 +66,7 @@ PLAN_TOKEN = SignIn("oauth_token", "firstParty")
 class ClaudeCode:
     auth: Auth
     model: str | None = None
+    effort: Effort | None = None
     read_also: tuple[Path, ...] = ()
 
     def login_problem(self) -> str | None:
@@ -98,6 +99,7 @@ class ClaudeCode:
             "claude",
             "-p",
             *(["--model", self.model] if self.model else []),
+            *(["--effort", self.effort.value] if self.effort else []),
             "--output-format", "json",
             "--json-schema", json.dumps(schema),
             "--permission-mode", "dontAsk",

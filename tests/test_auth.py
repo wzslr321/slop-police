@@ -2,12 +2,13 @@
 
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from slop_police import claude_code, codex
 from slop_police.claude_code import ClaudeCode
 from slop_police.codex import Codex
-from slop_police.harness import Auth
+from slop_police.harness import Auth, Effort
 from slop_police.harnesses import HarnessChoice, HarnessName
 
 WITH_KEYS = {
@@ -70,19 +71,32 @@ class SignInTest(unittest.TestCase):
 
 
 class CommandLineChoiceTest(unittest.TestCase):
-    configured = HarnessChoice(HarnessName.CLAUDE, Auth.PLAN, "claude-sonnet-5-5")
+    configured = HarnessChoice(HarnessName.CLAUDE, Auth.PLAN, "claude-sonnet-5-5", Effort.HIGH)
 
-    def test_another_harness_drops_the_configured_model(self) -> None:
+    def test_another_harness_drops_the_configured_model_and_keeps_the_effort(self) -> None:
         self.assertEqual(
-            self.configured.overridden(HarnessName.CODEX, None, None),
-            HarnessChoice(HarnessName.CODEX, Auth.PLAN, None),
+            self.configured.overridden(HarnessName.CODEX, None, None, None),
+            HarnessChoice(HarnessName.CODEX, Auth.PLAN, None, Effort.HIGH),
         )
 
     def test_the_same_harness_keeps_what_was_not_named(self) -> None:
         self.assertEqual(
-            self.configured.overridden(None, Auth.API, None),
-            HarnessChoice(HarnessName.CLAUDE, Auth.API, "claude-sonnet-5-5"),
+            self.configured.overridden(None, Auth.API, None, Effort.XHIGH),
+            HarnessChoice(HarnessName.CLAUDE, Auth.API, "claude-sonnet-5-5", Effort.XHIGH),
         )
+
+
+class EffortTest(unittest.TestCase):
+    def test_each_cli_gets_the_effort_in_its_own_option(self) -> None:
+        claude_command = ClaudeCode(Auth.PLAN, effort=Effort.XHIGH)._command({}, read_code=False)
+        codex_command = Codex(Auth.API, effort=Effort.XHIGH)._command(Path("schema"), Path("answer"), Path("."))
+
+        self.assertIn(["--effort", "xhigh"], _pairs(claude_command))
+        self.assertIn(["--config", 'model_reasoning_effort="xhigh"'], _pairs(codex_command))
+
+
+def _pairs(command: list[str]) -> list[list[str]]:
+    return [command[index : index + 2] for index in range(len(command) - 1)]
 
 
 if __name__ == "__main__":
