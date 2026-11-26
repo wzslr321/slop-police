@@ -8,4 +8,4 @@ Comments, numbered:
 2. Order the result by what the maintainer would fix first. {priority}
 3. Drop nothing for being small. Drop only a comment that another one fully contains.
 
-Return the comments in that order, each with the path and line of its main place and its body. Keep the bodies short and plain: the place and symbol, what is wrong, the fix.
+Return the comments in that order, each with the path and line of its main place and its body. Keep the bodies short and plain: the place and symbol, what is wrong, the fix. A comment that starts with the change of the pull request that leaves the code wrong keeps that start.
