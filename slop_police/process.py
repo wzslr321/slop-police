@@ -5,9 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from slop_police.change import Change, changed_files
-from slop_police.comments import COMMENTS_SCHEMA, Comment, Dropped, comments_from
+from slop_police.change import Change, changed_files, changed_lines
+from slop_police.comments import COMMENTS_SCHEMA, Comment, Dropped, Lines, comments_from
 from slop_police.config import Config
+from slop_police.github.diff import RightSide
 from slop_police.harness import Harness, HarnessFailed, Usage
 from slop_police.harnesses import harness_for
 
@@ -70,9 +71,11 @@ class CodeCandidate:
     problem: str
     evidence: str
     fix: str
+    # Off the lines the change adds or rewrites, only a change that leaves this code wrong makes it a finding.
+    on_changed_lines: bool
 
     def comment(self, body: str) -> Comment:
-        return Comment(self.path, self.line, body, self.end_line)
+        return Comment(self.path, self.line, body, self.end_line, elsewhere=not self.on_changed_lines)
 
 
 @dataclass(frozen=True)
@@ -111,8 +114,9 @@ def review(change: Change, config: Config, parallel: int = 1, harness: Harness |
     started = time.monotonic()
     harness = harness or _ready_harness(config)
     context = _context(change, config)
+    changed = changed_lines(change)
     with ThreadPoolExecutor(max_workers=parallel) as pool:
-        per_lens = list(pool.map(lambda lens: _through_lens(harness, change, config, context, lens), config.lenses))
+        per_lens = list(pool.map(lambda lens: _through_lens(harness, change, config, context, changed, lens), config.lenses))
     checked = _combined(per_lens)
     edited = _edited(harness, change, config, checked)
     return Review(
@@ -131,10 +135,10 @@ def _ready_harness(config: Config) -> Harness:
     return harness
 
 
-def _through_lens(harness: Harness, change: Change, config: Config, context: str, lens: str) -> Checked:
+def _through_lens(harness: Harness, change: Change, config: Config, context: str, changed: RightSide, lens: str) -> Checked:
     lens_text = config.lens(lens)
     found = harness.ask(f"{context}\n{lens_text}", CANDIDATES_SCHEMA, change.checkout, read_code=True)
-    candidates = [_candidate(item) for item in found.output["candidates"]]
+    candidates = [_candidate(item, changed) for item in found.output["candidates"]]
     if not candidates:
         return Checked([], [], found.usage)
     verify_prompt = _verify_prompt(change, config, lens_text, candidates)
@@ -145,10 +149,12 @@ def _through_lens(harness: Harness, change: Change, config: Config, context: str
     return Checked(comments, dropped, found.usage + verified.usage)
 
 
-def _candidate(item: dict) -> Candidate:
+def _candidate(item: dict, changed: RightSide) -> Candidate:
     if item["path"] is None:
         return DescriptionCandidate(item["problem"], item["evidence"], item["fix"])
-    return CodeCandidate(**item)
+    line = item["line"]
+    lines = None if line is None else Lines(line, max(line, item["end_line"] or line))
+    return CodeCandidate(**item, on_changed_lines=changed.touches(item["path"], lines))
 
 
 def _check_one_verdict_each(lens: str, candidates: list[Candidate], verdicts: list[dict]) -> None:
@@ -191,14 +197,18 @@ def _combined(per_lens: list[Checked]) -> Checked:
 
 
 def _edited(harness: Harness, change: Change, config: Config, checked: Checked) -> Checked:
-    """The editor rewrites what it gets, so the comments on the description pass it by with their quote as it is."""
-    on_code = [comment for comment in checked.comments if comment.path is not None]
-    if not on_code:
+    """The editor rewrites what it gets and answers with a path, a line and a body only.
+
+    So the comments on the description, whose quote must stay as written, and those on code outside the change, which
+    must stay marked as such, pass it by.
+    """
+    on_change = [comment for comment in checked.comments if comment.path is not None and not comment.elsewhere]
+    if not on_change:
         return checked
-    on_description = [comment for comment in checked.comments if comment.path is None]
-    answer = harness.ask(_editor_prompt(change, config, on_code), COMMENTS_SCHEMA, change.checkout, read_code=False)
-    edited = _with_ranges(comments_from(answer.output), on_code)
-    return Checked([*edited, *on_description], checked.dropped, checked.usage + answer.usage)
+    passing_by = [comment for comment in checked.comments if comment.path is None or comment.elsewhere]
+    answer = harness.ask(_editor_prompt(change, config, on_change), COMMENTS_SCHEMA, change.checkout, read_code=False)
+    edited = _with_ranges(comments_from(answer.output), on_change)
+    return Checked([*edited, *passing_by], checked.dropped, checked.usage + answer.usage)
 
 
 def _with_ranges(edited: list[Comment], before: list[Comment]) -> list[Comment]:

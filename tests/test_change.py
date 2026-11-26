@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from slop_police.change import Change, ChangedFile, UncommittedChanges, branch_change, changed_files
+from slop_police.change import Change, ChangedFile, UncommittedChanges, branch_change, changed_files, changed_lines
+from slop_police.comments import Lines
 
 
 class ChangeTest(unittest.TestCase):
@@ -52,6 +53,14 @@ class ChangeTest(unittest.TestCase):
             files,
             [ChangedFile("café.py", 1, 0), ChangedFile("cart/store.py", 0, 0), ChangedFile("logo.png", 0, 0)],
         )
+
+    def test_changed_lines_are_the_ones_the_head_commit_adds_or_rewrites(self) -> None:
+        base = self.commit({"cart/shop.py": "total = 0\ncount = 0\nprint(total)\nprint(count)\n"})
+        self.commit({"cart/shop.py": "total = 0\ncount = 1\nprint(total)\n", "café.py": "menu = []\n"})
+
+        changed = changed_lines(Change(self.checkout, base, "a change", "Count", ""))
+
+        self.assertEqual(changed.hunks, {"café.py": (Lines(1, 1),), "cart/shop.py": (Lines(2, 2),)}, "a deleted line has none")
 
 
 if __name__ == "__main__":

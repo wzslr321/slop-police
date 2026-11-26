@@ -43,6 +43,8 @@ class Comment:
     # The last line of the code the comment is about, the same as `line` for one line. A review file
     # written before ranges has none.
     end_line: int | None = None
+    # About code the pull request does not change but leaves wrong, such as a doc that names what it removed.
+    elsewhere: bool = False
 
     @property
     def lines(self) -> Lines | None:
@@ -59,5 +61,8 @@ class Dropped:
 
 
 def comments_from(output: dict) -> list[Comment]:
-    """Reads the editor's answer, which has no `end_line`, and a review file, which may have one."""
-    return [Comment(item["path"], item["line"], item["body"], item.get("end_line")) for item in output["comments"]]
+    """Reads the editor's answer, which has no `end_line` and no `elsewhere`, and a review file, which may have them."""
+    return [
+        Comment(item["path"], item["line"], item["body"], item.get("end_line"), item.get("elsewhere", False))
+        for item in output["comments"]
+    ]

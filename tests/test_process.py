@@ -95,6 +95,22 @@ class WholeFileHarness(ScriptedHarness):
         return super().ask(prompt, schema, cwd, read_code)
 
 
+@dataclass
+class ElsewhereHarness(ScriptedHarness):
+    """The lens `tests` keeps a candidate on a file the change leaves as it is, and the editor rewrites every body it is given."""
+
+    def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
+        if schema is CANDIDATES_SCHEMA and "Lens: tests" in prompt:
+            on_the_rules = {**_candidate("tests kept"), "path": "RULES.md", "end_line": 1}
+            return Answer({"candidates": [on_the_rules, _candidate("tests wrong")]}, Usage())
+        if schema is COMMENTS_SCHEMA:
+            rewritten = [{"path": "shop.py", "line": 1, "body": "naming: rewritten"}]
+            if "RULES.md" in prompt:
+                rewritten.append({"path": "RULES.md", "line": 1, "body": "tests: rewritten"})
+            return Answer({"comments": rewritten}, Usage())
+        return super().ask(prompt, schema, cwd, read_code)
+
+
 def _candidate(problem: str) -> dict:
     return {"path": "shop.py", "line": 1, "end_line": 3, "symbol": "total", "problem": problem, "evidence": "x", "fix": "y"}
 
@@ -173,6 +189,24 @@ class ProcessTest(unittest.TestCase):
         review = self.review()
 
         self.assertEqual(review.comments[0], Comment("shop.py", 1, "naming: fix it", end_line=3))
+
+    def test_the_check_knows_which_candidates_are_off_the_changed_lines(self) -> None:
+        self.harness = ElsewhereHarness()
+
+        self.review()
+
+        check = [prompt for prompt in self.harness.prompts if "Candidates, numbered" in prompt][-1]
+        self.assertIn('#0 {"path": "RULES.md", "line": 1, "end_line": 1,', check)
+        self.assertIn('"problem": "tests kept", "evidence": "x", "fix": "y", "on_changed_lines": false}', check)
+        self.assertIn('"problem": "tests wrong", "evidence": "x", "fix": "y", "on_changed_lines": true}', check)
+
+    def test_a_comment_off_the_changed_lines_passes_the_editor_by_marked_as_left_behind(self) -> None:
+        self.harness = ElsewhereHarness()
+
+        review = self.review()
+
+        left_behind = Comment("RULES.md", 1, "tests: fix it", end_line=1, elsewhere=True)
+        self.assertEqual(review.comments, [Comment("shop.py", 1, "naming: rewritten", end_line=3), left_behind])
 
 
 class CodexSchemaTest(unittest.TestCase):

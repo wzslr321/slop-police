@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from slop_police.github.diff import RightSide, right_side
+
 
 @dataclass(frozen=True)
 class Change:
@@ -35,6 +37,12 @@ def changed_files(change: Change, ignore: tuple[str, ...]) -> list[ChangedFile]:
     numstat = _git(change.checkout, "diff", "--numstat", "-z", change.base, "HEAD")
     files = _numstat_files(numstat)
     return [file for file in files if not any(fnmatchcase(file.path, pattern) for pattern in ignore)]
+
+
+def changed_lines(change: Change) -> RightSide:
+    """The lines of the head commit that the change adds or rewrites: the right side of its diff without context."""
+    options = ["--unified=0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"]
+    return right_side(_git(change.checkout, "-c", "core.quotepath=false", "diff", *options, change.base, "HEAD"))
 
 
 def _numstat_files(numstat: str) -> Iterator[ChangedFile]:

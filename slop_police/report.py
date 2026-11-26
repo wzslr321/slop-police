@@ -18,9 +18,8 @@ def _numbered(number: int, comment: Comment) -> str:
 def _place(comment: Comment) -> str:
     if comment.path is None:
         return "the description"
-    if comment.lines is None:
-        return f"`{comment.path}`"
-    return f"`{comment.path}:{comment.lines}`"
+    place = f"`{comment.path}`" if comment.lines is None else f"`{comment.path}:{comment.lines}`"
+    return f"{place}, left behind by this change" if comment.elsewhere else place
 
 
 def as_json(review: Review) -> str:

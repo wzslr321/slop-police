@@ -28,6 +28,8 @@ class Placement:
     inline: tuple[Comment, ...]
     # The comments whose lines the diff does not show, and those about a whole file or the description.
     in_body: tuple[Comment, ...]
+    # About code the change leaves wrong without changing it, also when the diff shows its lines.
+    elsewhere: tuple[Comment, ...]
 
 
 def right_side_of(diff_file: Path) -> RightSide:
@@ -38,13 +40,16 @@ def right_side_of(diff_file: Path) -> RightSide:
 def placed(comments: list[Comment], diff: RightSide) -> Placement:
     inline: list[Comment] = []
     in_body: list[Comment] = []
+    elsewhere: list[Comment] = []
     for comment in comments:
         lines = _shown_lines(comment, diff)
-        if lines is None:
+        if comment.elsewhere:
+            elsewhere.append(comment)
+        elif lines is None:
             in_body.append(comment)
         else:
             inline.append(replace(comment, line=lines.first, end_line=lines.last))
-    return Placement(tuple(inline), tuple(in_body))
+    return Placement(tuple(inline), tuple(in_body), tuple(elsewhere))
 
 
 def _shown_lines(comment: Comment, diff: RightSide) -> Lines | None:
@@ -80,11 +85,14 @@ def _inline(comment: Comment) -> dict:
 
 
 def _body(placement: Placement) -> str:
-    total = len(placement.inline) + len(placement.in_body)
-    if not placement.in_body:
+    off_the_diff = len(placement.in_body) + len(placement.elsewhere)
+    total = len(placement.inline) + off_the_diff
+    if not off_the_diff:
         return f"slop-police: {_comments(total)} on the diff."
-    summary = f"slop-police: {_comments(total)}, {len(placement.in_body)} of them not on a line of the diff:"
+    summary = f"slop-police: {_comments(total)}, {off_the_diff} of them not on a line of the diff:"
     sections = [_section(comment) for comment in placement.in_body if comment.path is not None]
+    if placement.elsewhere:
+        sections.append("\n\n".join(["**Left behind by this change**", *map(_section, placement.elsewhere)]))
     on_description = [comment.body for comment in placement.in_body if comment.path is None]
     if on_description:
         sections.append("\n\n".join(["**The description**", *on_description]))
