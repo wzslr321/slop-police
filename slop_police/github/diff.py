@@ -23,6 +23,12 @@ class RightSide:
                 return part
         return None
 
+    def touches(self, path: str, lines: Lines | None) -> bool:
+        """Whether a hunk shows any of `lines`, or any line of the file when there are none."""
+        if lines is None:
+            return path in self.hunks
+        return self.shown_part(path, lines) is not None
+
 
 def right_side(diff: str) -> RightSide:
     """The right side of a unified diff from `git diff`, with `a/` and `b/` prefixes."""

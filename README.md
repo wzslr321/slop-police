@@ -12,6 +12,8 @@ It knows nothing about what good code is. That comes from the repository under r
 
 Every step is its own session of a coding harness with read-only tools, so the lenses do not influence each other. Five lenses make eleven sessions.
 
+A review is about what the pull request brings in. On the lines it adds or rewrites, the check drops a problem the base commit already has there. In code it leaves as it is, a problem stays only when a change of the pull request leaves that code wrong, such as a doc that still names a removed function.
+
 ## Run it
 
 ```sh
@@ -68,7 +70,7 @@ Two composite actions run in two jobs. The root action reviews the pull request 
 
 The review reads `.review` as the base commit has it, so a pull request cannot change the lenses that review it. The harness, who pays, the model and the effort come from `[harness]` there, so each repository chooses its own. While the base has no `.review`, the `config` input names another folder.
 
-A comment marks the lines of code it is about. On lines the diff shows it becomes an inline comment; GitHub takes a range only inside one hunk, so a range that runs past its hunk is cut to it. Any other comment goes into the review body under its path and lines.
+A comment marks the lines of code it is about. On lines the diff shows it becomes an inline comment; GitHub takes a range only inside one hunk, so a range that runs past its hunk is cut to it. Any other comment goes into the review body under its path and lines, and one on code the change leaves wrong under "Left behind by this change", also when the diff shows its lines.
 
 A maintainer starts a review with the label `slop-police`:
 

@@ -85,9 +85,10 @@ class ReviewRequestTest(unittest.TestCase):
         past_a_hunk = Comment("shop.py", 12, "Say when it is done.", end_line=20)
         outside_the_diff = Comment("shop.py", 30, "This was already wrong.", end_line=32)
         whole_file = Comment("gone.py", None, "Who used this?")
+        left_behind = Comment("shop.py", 1, "Nothing reads json now.", elsewhere=True)
         description = Comment(None, None, "Say what the change does.")
         more_description = Comment(None, None, "Say how it was checked.")
-        comments = [one_line, description, outside_the_diff, in_a_hunk, past_a_hunk, whole_file, more_description]
+        comments = [one_line, description, outside_the_diff, in_a_hunk, left_behind, past_a_hunk, whole_file, more_description]
         self.request = ReviewRequest(PullRequest("owner/shop", 7), "abc123", placed(comments, right_side(DIFF)))
 
     def test_lines_the_diff_shows_get_inline_comments_and_the_rest_go_into_the_body(self) -> None:
@@ -104,10 +105,12 @@ class ReviewRequestTest(unittest.TestCase):
         )
         self.assertEqual(
             payload["body"],
-            "slop-police: 7 comments, 4 of them not on a line of the diff:\n\n"
+            "slop-police: 8 comments, 5 of them not on a line of the diff:\n\n"
             "**`shop.py:30-32`**\n\nThis was already wrong.\n\n"
             "**`gone.py`**\n\nWho used this?\n\n"
+            "**Left behind by this change**\n\n**`shop.py:1`**\n\nNothing reads json now.\n\n"
             "**The description**\n\nSay what the change does.\n\nSay how it was checked.",
+            "a comment on code the change leaves wrong goes into the body, also on a line the diff shows",
         )
 
     def test_the_review_only_comments_on_the_reviewed_commit(self) -> None:
