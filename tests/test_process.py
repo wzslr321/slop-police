@@ -97,7 +97,7 @@ class WholeFileHarness(ScriptedHarness):
 
 @dataclass
 class ElsewhereHarness(ScriptedHarness):
-    """The lens `tests` keeps a candidate on a file the change leaves as it is, and the editor rewrites every body it is given."""
+    """The lens `tests` keeps a candidate on a file the change leaves as it is, and the editor keeps both comments."""
 
     def ask(self, prompt: str, schema: dict, cwd: Path, read_code: bool) -> Answer:
         if schema is CANDIDATES_SCHEMA and "Lens: tests" in prompt:
@@ -142,7 +142,7 @@ class ProcessTest(unittest.TestCase):
 
         finding = [prompt for prompt in self.harness.prompts if "Lens: naming" in prompt][0]
         self.assertIn("pull request #7 of example/shop, a small web shop", finding)
-        self.assertIn("- shop.py (+1 -0)", finding)
+        self.assertIn("- shop.py (+2 -0)", finding)
         self.assertNotIn("pubspec.lock", finding, "ignored files are not listed")
         self.assertIn("rules are in `RULES.md`", finding)
 
@@ -200,12 +200,12 @@ class ProcessTest(unittest.TestCase):
         self.assertIn('"problem": "tests kept", "evidence": "x", "fix": "y", "on_changed_lines": false}', check)
         self.assertIn('"problem": "tests wrong", "evidence": "x", "fix": "y", "on_changed_lines": true}', check)
 
-    def test_a_comment_off_the_changed_lines_passes_the_editor_by_marked_as_left_behind(self) -> None:
+    def test_a_comment_the_editor_puts_off_the_changed_lines_is_marked_as_left_behind(self) -> None:
         self.harness = ElsewhereHarness()
 
         review = self.review()
 
-        left_behind = Comment("RULES.md", 1, "tests: fix it", end_line=1, elsewhere=True)
+        left_behind = Comment("RULES.md", 1, "tests: rewritten", end_line=1, elsewhere=True)
         self.assertEqual(review.comments, [Comment("shop.py", 1, "naming: rewritten", end_line=3), left_behind])
 
 
@@ -233,7 +233,7 @@ def _repository_with_one_change(checkout: Path) -> str:
     git("add", ".")
     git("commit", "-q", "-m", "start")
     base = git("rev-parse", "HEAD").strip()
-    (checkout / "shop.py").write_text("total = 0\n")
+    (checkout / "shop.py").write_text("total = 0\ncount = 0\n")
     (checkout / "pubspec.lock").write_text("locked\n")
     git("add", ".")
     git("commit", "-q", "-m", "add totals")

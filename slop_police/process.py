@@ -75,7 +75,7 @@ class CodeCandidate:
     on_changed_lines: bool
 
     def comment(self, body: str) -> Comment:
-        return Comment(self.path, self.line, body, self.end_line, elsewhere=not self.on_changed_lines)
+        return Comment(self.path, self.line, body, self.end_line)
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ def review(change: Change, config: Config, parallel: int = 1, harness: Harness |
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         per_lens = list(pool.map(lambda lens: _through_lens(harness, change, config, context, changed, lens), config.lenses))
     checked = _combined(per_lens)
-    edited = _edited(harness, change, config, checked)
+    edited = _edited(harness, change, config, checked, changed)
     return Review(
         comments=edited.comments[: config.max_comments],
         dropped=edited.dropped,
@@ -196,19 +196,19 @@ def _combined(per_lens: list[Checked]) -> Checked:
     )
 
 
-def _edited(harness: Harness, change: Change, config: Config, checked: Checked) -> Checked:
-    """The editor rewrites what it gets and answers with a path, a line and a body only.
+def _edited(harness: Harness, change: Change, config: Config, checked: Checked, changed: RightSide) -> Checked:
+    """The editor rewrites what it gets, so the comments on the description pass it by with their quote as it is.
 
-    So the comments on the description, whose quote must stay as written, and those on code outside the change, which
-    must stay marked as such, pass it by.
+    A merged comment is about code outside the change when the place the editor gives it is.
     """
-    on_change = [comment for comment in checked.comments if comment.path is not None and not comment.elsewhere]
-    if not on_change:
+    on_code = [comment for comment in checked.comments if comment.path is not None]
+    if not on_code:
         return checked
-    passing_by = [comment for comment in checked.comments if comment.path is None or comment.elsewhere]
-    answer = harness.ask(_editor_prompt(change, config, on_change), COMMENTS_SCHEMA, change.checkout, read_code=False)
-    edited = _with_ranges(comments_from(answer.output), on_change)
-    return Checked([*edited, *passing_by], checked.dropped, checked.usage + answer.usage)
+    on_description = [comment for comment in checked.comments if comment.path is None]
+    answer = harness.ask(_editor_prompt(change, config, on_code), COMMENTS_SCHEMA, change.checkout, read_code=False)
+    edited = _with_ranges(comments_from(answer.output), on_code)
+    marked = [replace(comment, elsewhere=not changed.touches(comment.path, comment.lines)) for comment in edited]
+    return Checked([*marked, *on_description], checked.dropped, checked.usage + answer.usage)
 
 
 def _with_ranges(edited: list[Comment], before: list[Comment]) -> list[Comment]:
